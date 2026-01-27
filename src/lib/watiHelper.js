@@ -10,7 +10,8 @@
 const WATI_CONFIG = {
     API_ENDPOINT: import.meta.env.VITE_WATI_API_ENDPOINT,
     ACCESS_TOKEN: import.meta.env.VITE_WATI_ACCESS_TOKEN,
-    TEMPLATE_NAME: import.meta.env.VITE_WATI_TEMPLATE_NAME || 'rsvp_confirmation'
+    TEMPLATE_NAME: import.meta.env.VITE_WATI_TEMPLATE_NAME || 'rsvp_confirmation',
+    BASE_URL: import.meta.env.VITE_APP_URL || window.location.origin
 };
 
 /**
@@ -20,8 +21,9 @@ const WATI_CONFIG = {
  * @param {Object} params - WhatsApp parameters
  * @param {Object} params.event - Event details (name, date, time, location)
  * @param {Object} params.guest - Guest details (name, phone)
+ * @param {string} params.rsvpId - The created RSVP ID for the ticket link
  */
-export async function sendWhatsappConfirmation({ event, guest }) {
+export async function sendWhatsappConfirmation({ event, guest, rsvpId }) {
     // Skip if validation fails
     if (!guest.phone || !WATI_CONFIG.API_ENDPOINT || !WATI_CONFIG.ACCESS_TOKEN) {
         console.warn('WhatsApp not sent: Missing phone or Wati config');
@@ -29,10 +31,11 @@ export async function sendWhatsappConfirmation({ event, guest }) {
     }
 
     try {
-        // Format phone: Remove '+' and ensure it has country code if possible, 
-        // Wati usually expects full number with country code. 
-        // Assuming input might be various formats, basic cleaning:
         const cleanPhone = guest.phone.replace(/\D/g, '');
+
+        // Wati Dynamic Buttons work by taking the 'Base URL' in the dashboard
+        // and appending this 'Suffix' (parameter 6) to it.
+        const ticketSuffix = `rsvp/${event.id}?rsvpId=${rsvpId}&view=true`;
 
         const payload = {
             template_name: WATI_CONFIG.TEMPLATE_NAME,
@@ -42,7 +45,8 @@ export async function sendWhatsappConfirmation({ event, guest }) {
                 { name: 'event_name', value: event.name },
                 { name: 'event_date', value: event.date },
                 { name: 'event_time', value: event.time },
-                { name: 'event_location', value: event.location }
+                { name: 'event_location', value: event.location },
+                { name: 'ticket_link', value: ticketSuffix }
             ],
             whatsappNumber: cleanPhone
         };
@@ -50,7 +54,7 @@ export async function sendWhatsappConfirmation({ event, guest }) {
         const response = await fetch(`${WATI_CONFIG.API_ENDPOINT}/api/v1/sendTemplateMessage?whatsappNumber=${cleanPhone}`, {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${WATI_CONFIG.ACCESS_TOKEN}`,
+                'Authorization': WATI_CONFIG.ACCESS_TOKEN.startsWith('Bearer ') ? WATI_CONFIG.ACCESS_TOKEN : `Bearer ${WATI_CONFIG.ACCESS_TOKEN}`,
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify(payload)

@@ -89,8 +89,9 @@ export async function createRSVP({ eventId, userId, guests, eventData, addedBy =
             if (guest.phone) {
                 import('./watiHelper').then(module => {
                     module.sendWhatsappConfirmation({
-                        event: eventData,
-                        guest: { name: guest.name, phone: guest.phone }
+                        event: { id: eventId, ...eventData },
+                        guest: { name: guest.name, phone: guest.phone },
+                        rsvpId: rsvpDocRef.id
                     }).catch(err => console.warn('WhatsApp failed (non-blocking):', err));
                 }).catch(err => console.error('Failed to load watiHelper', err));
             }
