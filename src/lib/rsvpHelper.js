@@ -51,7 +51,7 @@ export async function createNotification({ userId, type, title, message, eventId
  */
 export async function createRSVP({ eventId, userId, guests, eventData, addedBy = 'self' }) {
     const { collection: firestoreCollection, addDoc: firestoreAddDoc, serverTimestamp: firestoreTimestamp, doc: firestoreDoc, updateDoc: firestoreUpdateDoc, arrayUnion } = await import('firebase/firestore');
-    
+
     try {
         // 1. Create RSVP document
         const rsvpDocRef = await firestoreAddDoc(firestoreCollection(db, `lists/${eventId}/rsvps`), {
@@ -74,14 +74,25 @@ export async function createRSVP({ eventId, userId, guests, eventData, addedBy =
             }
         }
 
-        // 3. Send confirmation emails to all guests (non-blocking, fire-and-forget)
+        // 3. Send confirmation emails and WhatsApp messages to all guests (non-blocking, fire-and-forget)
         guests.forEach(guest => {
+            // Email
             if (guest.email) {
                 sendConfirmationEmail({
                     event: eventData,
                     guest: { name: guest.name, email: guest.email },
                     addedBy
                 }).catch(err => console.warn('Email failed (non-blocking):', err));
+            }
+
+            // WhatsApp (Wati)
+            if (guest.phone) {
+                import('./watiHelper').then(module => {
+                    module.sendWhatsappConfirmation({
+                        event: eventData,
+                        guest: { name: guest.name, phone: guest.phone }
+                    }).catch(err => console.warn('WhatsApp failed (non-blocking):', err));
+                }).catch(err => console.error('Failed to load watiHelper', err));
             }
         });
 

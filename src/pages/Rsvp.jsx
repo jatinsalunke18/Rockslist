@@ -5,8 +5,6 @@ import { doc, getDoc, collection, addDoc, updateDoc, increment, serverTimestamp,
 import { useAuth } from '../contexts/AuthContext';
 import { validateGuestIdentity, findDuplicateGuest, checkEventLevelDuplicate, normalizePhone, normalizeEmail } from '../lib/validation';
 import { createRSVP, notifyRSVPEdit, notifyHostNewGuest } from '../lib/rsvpHelper';
-import emailjs from '@emailjs/browser';
-import { emailConfig } from '../lib/emailConfig';
 
 export default function Rsvp() {
     const { id } = useParams();
@@ -192,33 +190,7 @@ export default function Rsvp() {
 
     const [isSuccess, setIsSuccess] = useState(false);
 
-    const sendEmailNotification = async (guestEmail, eventData, ticketUrl) => {
-        if (!emailConfig.PUBLIC_KEY || emailConfig.PUBLIC_KEY === 'YOUR_PUBLIC_KEY') {
-            console.warn('EmailJS not configured. Skipping email send.');
-            return;
-        }
 
-        try {
-            await emailjs.send(
-                emailConfig.SERVICE_ID,
-                emailConfig.TEMPLATE_ID,
-                {
-                    email: guestEmail,
-                    user_name: user.displayName || 'Guest',
-                    event_name: eventData.eventName || eventData.name,
-                    event_date: eventData.date,
-                    event_time: eventData.time,
-                    event_location: eventData.location,
-                    ticket_link: ticketUrl,
-                    reply_to: hostData?.email || 'support@rockslist.com'
-                },
-                emailConfig.PUBLIC_KEY
-            );
-            console.log('Email sent successfully!');
-        } catch (error) {
-            console.error('Email failed to send:', error);
-        }
-    };
 
     const handleSubmit = async () => {
         if (mode === 'create' && !termsAccepted) return;
@@ -268,10 +240,10 @@ export default function Rsvp() {
                     guests: cleanGuests,
                     updatedAt: serverTimestamp()
                 });
-                
+
                 // Create notification for edit
                 await notifyRSVPEdit(user.uid, id, event.eventName || event.name);
-                
+
                 alert("RSVP Updated!");
                 navigate(`/event/${id}`);
             } else {
@@ -316,7 +288,7 @@ export default function Rsvp() {
                     const friendId = guest.email || guest.phone;
                     if (friendId) {
                         const isSelf = guest.email?.toLowerCase() === user.email?.toLowerCase() ||
-                                      guest.phone?.replace(/[^0-9]/g, '') === user.phoneNumber?.replace(/[^0-9]/g, '');
+                            guest.phone?.replace(/[^0-9]/g, '') === user.phoneNumber?.replace(/[^0-9]/g, '');
                         if (!isSelf) {
                             backgroundTasks.push(setDoc(doc(db, `users/${user.uid}/friends`, friendId), {
                                 name: guest.name,
