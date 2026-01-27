@@ -43,15 +43,15 @@ export default function Home() {
 
     const getEventStatus = (event) => {
         if (!event.closeTime || !event.date) return null;
-        
+
         const now = new Date();
         const eventDate = new Date(event.date);
         const [hours, minutes] = event.closeTime.split(':');
         const closeDateTime = new Date(eventDate);
         closeDateTime.setHours(parseInt(hours), parseInt(minutes));
-        
+
         const hoursUntilClose = (closeDateTime - now) / (1000 * 60 * 60);
-        
+
         if (hoursUntilClose < 0) return { text: 'Closed', color: 'var(--text-muted)' };
         if (hoursUntilClose <= 1) return { text: `Closing soon (${event.closeTime})`, color: '#FF9500' };
         return { text: `Open till ${event.closeTime}`, color: 'var(--text-muted)' };
@@ -101,7 +101,7 @@ export default function Home() {
                             return (
                                 <div key={event.id} className="event-card-home" onClick={() => navigate(`/event/${event.id}`)}>
                                     <div className="event-card-img-wrapper">
-                                        <img src={event.flyerUrl || "https://placehold.co/600x400/EEE/31343C?text=Event"} alt={event.name} className="event-card-img" loading="lazy" />
+                                        <img src={event.flyerUrl || "https://placehold.co/600x400/EEE/DDD/png"} alt={event.name} className="event-card-img" loading="lazy" />
                                         <div className="event-card-gradient"></div>
                                         <div className="card-overlay-badge">
                                             <span className="month">{month}</span>

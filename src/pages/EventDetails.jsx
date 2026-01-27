@@ -152,10 +152,10 @@ export default function EventDetails() {
                 const userRsvps = JSON.parse(localStorage.getItem('userRsvps') || '[]');
                 const updatedRsvps = userRsvps.filter(rsvpId => rsvpId !== id);
                 localStorage.setItem('userRsvps', JSON.stringify(updatedRsvps));
-                
+
                 // Remove from joinedUserIds
                 await removeUserFromJoinedList(id, user.uid);
-                
+
                 // Create notification for exit using helper
                 await notifyRSVPRemoval(user.uid, id, event?.eventName || event?.name);
             }
@@ -199,7 +199,7 @@ export default function EventDetails() {
                     <button className="icon-btn-plain" onClick={() => setShowEventMenu(!showEventMenu)}>
                         <i className="fas fa-ellipsis-v"></i>
                     </button>
-                    
+
                     {/* Event Menu Dropdown */}
                     {showEventMenu && (
                         <>
@@ -235,7 +235,7 @@ export default function EventDetails() {
 
             <div className="event-details-scroll">
                 <div className="event-flyer-section">
-                    <img src={event.flyerUrl || "https://via.placeholder.com/400x500"} alt="Event Flyer" className="event-flyer-img" />
+                    <img src={event.flyerUrl || "https://placehold.co/800x1000/EEE/DDD/png"} alt="Event Flyer" className="event-flyer-img" />
                 </div>
 
                 <div className="event-info-section">

@@ -187,8 +187,8 @@ export default function Guestlists() {
                     {event.flyerUrl ? (
                         <img src={event.flyerUrl} alt={event.eventName || event.name} loading="lazy" />
                     ) : (
-                        <div className="event-card-placeholder">
-                            <span>{initials}</span>
+                        <div className="event-card-placeholder" style={{ background: 'linear-gradient(135deg, #6366f1 0%, #a855f7 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <i className="fas fa-image" style={{ color: 'white', opacity: 0.4, fontSize: '2rem' }}></i>
                         </div>
                     )}
                     <div className="event-card-badge" style={{ backgroundColor: badge.color }}>

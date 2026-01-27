@@ -34,7 +34,7 @@ export default function PreviewGuestlist() {
     }
 
     const maxAttendees = parseInt(formData.maxAttendees) || 100;
-    const displayFlyerUrl = previewUrl || currentFlyerUrl || "https://via.placeholder.com/400x500";
+    const displayFlyerUrl = previewUrl || currentFlyerUrl || "https://placehold.co/800x1000/EEE/DDD/png";
 
     const handleEdit = () => {
         navigate('/create' + (editId ? `?edit=${editId}` : ''), {
@@ -51,7 +51,8 @@ export default function PreviewGuestlist() {
             let flyerUrlToSave = currentFlyerUrl;
 
             if (!flyerUrlToSave && !flyer) {
-                flyerUrlToSave = `https://placehold.co/800x1000/6366f1/ffffff/png?text=No+Image&font=roboto`;
+                // Neutral grey placeholder without text
+                flyerUrlToSave = `https://placehold.co/800x1000/EEE/DDD/png`;
             }
 
             if (flyer) {
@@ -60,29 +61,17 @@ export default function PreviewGuestlist() {
                     try {
                         flyerUrlToSave = await uploadToCloudinary(flyer);
                     } catch (cloudinaryErr) {
-                        console.warn("Cloudinary upload failed, falling back to Firebase/Placeholder", cloudinaryErr);
+                        console.warn("Cloudinary upload failed, falling back to Firebase", cloudinaryErr);
 
-                        // Fallback to Firebase if Cloudinary fails (e.g. not configured yet)
+                        // Fallback to Firebase if Cloudinary fails
                         const storageRef = ref(storage, `flyers/${Date.now()}_${flyer.name}`);
-
-                        // Race the upload against a 15-second timeout
-                        const uploadPromise = uploadBytes(storageRef, flyer);
-                        const timeoutPromise = new Promise((_, reject) =>
-                            setTimeout(() => reject(new Error('Upload timed out')), 15000)
-                        );
-
-                        const snapshot = await Promise.race([uploadPromise, timeoutPromise]);
+                        const snapshot = await uploadBytes(storageRef, flyer);
                         flyerUrlToSave = await getDownloadURL(snapshot.ref);
                     }
                 } catch (storageErr) {
-                    console.error("Storage Error or Timeout:", storageErr);
-                    // Use a placeholder if upload fails but don't stop the publishing
-                    flyerUrlToSave = `https://placehold.co/800x1000/6366f1/ffffff/png?text=Upload+Skipped&font=roboto`;
-
-                    if (storageErr.message === 'Upload timed out') {
-                        setPublishStatus('Upload slow via network. Skipping image...');
-                        await new Promise(r => setTimeout(r, 1000));
-                    }
+                    console.error("Storage/Upload Error:", storageErr);
+                    // Re-throw so publishing fails rather than saving with a 'text' placeholder
+                    throw new Error(`Flyer upload failed: ${storageErr.message}. Please check your internet and try again.`);
                 }
             }
 
@@ -117,7 +106,7 @@ export default function PreviewGuestlist() {
             // Handle Predefined Guests (Parallel Processing for Speed)
             if (predefinedGuests && predefinedGuests.length > 0 && finalEventId) {
                 setPublishStatus(`Adding ${predefinedGuests.length} Guests...`);
-                
+
                 const guestPromises = predefinedGuests.map(async (guest) => {
                     const cleanGuest = {
                         name: guest.name,
@@ -146,7 +135,7 @@ export default function PreviewGuestlist() {
                     const friendId = cleanGuest.email || cleanGuest.phone;
                     if (friendId) {
                         const isSelf = cleanGuest.email?.toLowerCase() === user.email?.toLowerCase() ||
-                                      cleanGuest.phone?.replace(/[^0-9]/g, '') === user.phoneNumber?.replace(/[^0-9]/g, '');
+                            cleanGuest.phone?.replace(/[^0-9]/g, '') === user.phoneNumber?.replace(/[^0-9]/g, '');
                         if (!isSelf) {
                             const friendPromise = setDoc(doc(db, `users/${user.uid}/friends`, friendId), {
                                 name: cleanGuest.name,
