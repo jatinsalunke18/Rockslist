@@ -26,7 +26,11 @@ const WATI_CONFIG = {
 export async function sendWhatsappConfirmation({ event, guest, rsvpId }) {
     // Skip if validation fails
     if (!guest.phone || !WATI_CONFIG.API_ENDPOINT || !WATI_CONFIG.ACCESS_TOKEN) {
-        console.warn('WhatsApp not sent: Missing phone or Wati config');
+        console.error('❌ WhatsApp skip: Missing config', {
+            hasPhone: !!guest.phone,
+            hasEndpoint: !!WATI_CONFIG.API_ENDPOINT,
+            hasToken: !!WATI_CONFIG.ACCESS_TOKEN
+        });
         return;
     }
 
@@ -51,6 +55,8 @@ export async function sendWhatsappConfirmation({ event, guest, rsvpId }) {
             whatsappNumber: cleanPhone
         };
 
+        console.log(`⏳ Sending WhatsApp to ${cleanPhone}...`, payload);
+
         const response = await fetch(`${WATI_CONFIG.API_ENDPOINT}/api/v1/sendTemplateMessage?whatsappNumber=${cleanPhone}`, {
             method: 'POST',
             headers: {
@@ -60,12 +66,13 @@ export async function sendWhatsappConfirmation({ event, guest, rsvpId }) {
             body: JSON.stringify(payload)
         });
 
+        const responseData = await response.json().catch(() => ({}));
+
         if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(`Wati API error: ${response.status} ${JSON.stringify(errorData)}`);
+            throw new Error(`Wati API error: ${response.status} ${JSON.stringify(responseData)}`);
         }
 
-        console.log(`✓ WhatsApp sent to ${cleanPhone}`);
+        console.log(`✅ WhatsApp sent successfully to ${cleanPhone}:`, responseData);
 
     } catch (error) {
         console.error('WhatsApp send failed (non-blocking):', error);
