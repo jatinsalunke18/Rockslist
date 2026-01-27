@@ -79,8 +79,9 @@ export async function createRSVP({ eventId, userId, guests, eventData, addedBy =
             // Email
             if (guest.email) {
                 sendConfirmationEmail({
-                    event: eventData,
+                    event: { id: eventId, ...eventData },
                     guest: { name: guest.name, email: guest.email },
+                    rsvpId: rsvpDocRef.id,
                     addedBy
                 }).catch(err => console.warn('Email failed (non-blocking):', err));
             }

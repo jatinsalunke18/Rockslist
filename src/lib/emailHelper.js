@@ -18,18 +18,22 @@ import { emailConfig } from './emailConfig';
  * @param {string} params.addedBy - 'self' | 'organizer'
  * @returns {Promise<void>}
  */
-export async function sendConfirmationEmail({ event, guest, addedBy = 'self' }) {
+export async function sendConfirmationEmail({ event, guest, rsvpId, addedBy = 'self' }) {
     // Skip if no email or EmailJS not configured
     if (!guest.email || !emailConfig.PUBLIC_KEY || emailConfig.PUBLIC_KEY === 'YOUR_PUBLIC_KEY') {
         console.warn('Email not sent: Missing email or EmailJS not configured');
         return;
     }
-    
+
     try {
-        const message = addedBy === 'organizer' 
+        const message = addedBy === 'organizer'
             ? `You've been added to the guestlist for ${event.name}!`
             : `Your RSVP for ${event.name} is confirmed!`;
-        
+
+        // Automatically detect the base URL of the app
+        const baseUrl = window.location.origin;
+        const ticketUrl = `${baseUrl}/rsvp/${event.id}?rsvpId=${rsvpId}&view=true`;
+
         await emailjs.send(
             emailConfig.SERVICE_ID,
             emailConfig.TEMPLATE_ID,
@@ -40,12 +44,13 @@ export async function sendConfirmationEmail({ event, guest, addedBy = 'self' }) 
                 event_date: event.date,
                 event_time: event.time,
                 event_location: event.location,
+                ticket_url: ticketUrl,
                 message: message,
                 reply_to: 'noreply@rockslist.com'
             },
             emailConfig.PUBLIC_KEY
         );
-        
+
         console.log(`✓ Confirmation email sent to ${guest.email}`);
     } catch (error) {
         console.error('Email send failed (non-blocking):', error);
