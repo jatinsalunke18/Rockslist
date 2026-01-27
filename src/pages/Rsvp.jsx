@@ -3,6 +3,10 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { db } from '../lib/firebase';
 import { doc, getDoc, collection, addDoc, updateDoc, increment, serverTimestamp, setDoc, query, where, getDocs } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
+import { validateGuestIdentity, findDuplicateGuest, checkEventLevelDuplicate, normalizePhone, normalizeEmail } from '../lib/validation';
+import { createRSVP, notifyRSVPEdit, notifyHostNewGuest } from '../lib/rsvpHelper';
+import emailjs from '@emailjs/browser';
+import { emailConfig } from '../lib/emailConfig';
 
 export default function Rsvp() {
     const { id } = useParams();
@@ -11,7 +15,7 @@ export default function Rsvp() {
     const [searchParams] = useSearchParams();
     const mode = searchParams.get('view') ? 'view' : searchParams.get('edit') ? 'edit' : 'create';
     const providedRsvpId = searchParams.get('rsvpId');
-    
+
     const [event, setEvent] = useState(null);
     const [loading, setLoading] = useState(true);
     const [guests, setGuests] = useState([]);
@@ -21,6 +25,8 @@ export default function Rsvp() {
     const [friends, setFriends] = useState([]);
     const [showFriendsPicker, setShowFriendsPicker] = useState(false);
     const [selectedFriends, setSelectedFriends] = useState([]);
+    const [guestErrors, setGuestErrors] = useState({});
+    const [hostData, setHostData] = useState(null);
 
     useEffect(() => {
         const fetchData = async () => {
@@ -28,7 +34,17 @@ export default function Rsvp() {
                 const docRef = doc(db, "lists", id);
                 const docSnap = await getDoc(docRef);
                 if (docSnap.exists()) {
-                    setEvent({ id: docSnap.id, ...docSnap.data() });
+                    const data = docSnap.data();
+                    setEvent({ id: docSnap.id, ...data });
+
+                    // Fetch host details for WhatsApp/Email
+                    if (data.createdBy) {
+                        const hostRef = doc(db, "users", data.createdBy);
+                        const hostSnap = await getDoc(hostRef);
+                        if (hostSnap.exists()) {
+                            setHostData(hostSnap.data());
+                        }
+                    }
                 }
 
                 const friendsRef = collection(db, `users/${user.uid}/friends`);
@@ -44,7 +60,7 @@ export default function Rsvp() {
 
                 if (mode === 'view' || mode === 'edit') {
                     let targetRsvpId = providedRsvpId;
-                    
+
                     if (!targetRsvpId) {
                         const rsvpsRef = collection(db, `lists/${id}/rsvps`);
                         const q = query(rsvpsRef, where("userId", "==", user.uid));
@@ -53,16 +69,16 @@ export default function Rsvp() {
                             targetRsvpId = querySnapshot.docs[0].id;
                         }
                     }
-                    
+
                     if (targetRsvpId) {
                         setRsvpId(targetRsvpId);
                         const rsvpDoc = await getDoc(doc(db, `lists/${id}/rsvps`, targetRsvpId));
-                        
+
                         if (rsvpDoc.exists()) {
                             const rsvpData = rsvpDoc.data();
                             if (rsvpData.guests && Array.isArray(rsvpData.guests)) {
                                 let guestsToLoad = [];
-                                
+
                                 if (rsvpData.userId === user.uid) {
                                     guestsToLoad = rsvpData.guests.map((g, idx) => ({
                                         name: g.name || '',
@@ -78,7 +94,7 @@ export default function Rsvp() {
                                         if (userPhone && guest.phone?.replace(/[^0-9]/g, '') === userPhone.replace(/[^0-9]/g, '')) return true;
                                         return false;
                                     });
-                                    
+
                                     if (matchedGuest) {
                                         guestsToLoad = [{
                                             name: matchedGuest.name || '',
@@ -89,14 +105,16 @@ export default function Rsvp() {
                                         }];
                                     }
                                 }
-                                
+
                                 setGuests(guestsToLoad);
                             }
                         }
                     }
                 } else {
+                    const userEmail = user.email || '';
                     setGuests([{
                         name: userName,
+                        email: userEmail,
                         phone: userPhone.replace('+91', ''),
                         gender: '',
                         isSelf: true
@@ -125,6 +143,9 @@ export default function Rsvp() {
         const newGuests = [...guests];
         newGuests[index][field] = value;
         setGuests(newGuests);
+        const newErrors = { ...guestErrors };
+        delete newErrors[index];
+        setGuestErrors(newErrors);
     };
 
     const handleAddFromFriends = () => {
@@ -169,8 +190,68 @@ export default function Rsvp() {
         setShowFriendsPicker(false);
     };
 
+    const [isSuccess, setIsSuccess] = useState(false);
+
+    const sendEmailNotification = async (guestEmail, eventData, ticketUrl) => {
+        if (!emailConfig.PUBLIC_KEY || emailConfig.PUBLIC_KEY === 'YOUR_PUBLIC_KEY') {
+            console.warn('EmailJS not configured. Skipping email send.');
+            return;
+        }
+
+        try {
+            await emailjs.send(
+                emailConfig.SERVICE_ID,
+                emailConfig.TEMPLATE_ID,
+                {
+                    email: guestEmail,
+                    user_name: user.displayName || 'Guest',
+                    event_name: eventData.eventName || eventData.name,
+                    event_date: eventData.date,
+                    event_time: eventData.time,
+                    event_location: eventData.location,
+                    ticket_link: ticketUrl,
+                    reply_to: hostData?.email || 'support@rockslist.com'
+                },
+                emailConfig.PUBLIC_KEY
+            );
+            console.log('Email sent successfully!');
+        } catch (error) {
+            console.error('Email failed to send:', error);
+        }
+    };
+
     const handleSubmit = async () => {
         if (mode === 'create' && !termsAccepted) return;
+
+        const errors = {};
+
+        for (let i = 0; i < guests.length; i++) {
+            const guest = guests[i];
+            const validation = validateGuestIdentity(guest);
+            if (!validation.valid) {
+                errors[i] = validation.error;
+                continue;
+            }
+
+            const otherGuests = guests.filter((_, idx) => idx !== i);
+            const isPrimaryUser = guest.isSelf;
+            const duplicate = findDuplicateGuest(guest, otherGuests, user, isPrimaryUser);
+            if (duplicate.isDuplicate) {
+                errors[i] = duplicate.error;
+            }
+        }
+
+        setGuestErrors(errors);
+        if (Object.keys(errors).length > 0) return;
+
+        if (mode === 'create') {
+            const eventDuplicateCheck = await checkEventLevelDuplicate(db, id, guests, user.uid);
+            if (eventDuplicateCheck.isDuplicate) {
+                alert(eventDuplicateCheck.error);
+                return;
+            }
+        }
+
         setSubmitting(true);
         try {
             const cleanGuests = guests.map(g => ({
@@ -187,20 +268,65 @@ export default function Rsvp() {
                     guests: cleanGuests,
                     updatedAt: serverTimestamp()
                 });
+                
+                // Create notification for edit
+                await notifyRSVPEdit(user.uid, id, event.eventName || event.name);
+                
                 alert("RSVP Updated!");
                 navigate(`/event/${id}`);
             } else {
-                await addDoc(collection(db, `lists/${id}/rsvps`), {
-                    userId: user.uid,
+                // Use centralized RSVP helper
+                await createRSVP({
                     eventId: id,
+                    userId: user.uid,
                     guests: cleanGuests,
-                    createdAt: serverTimestamp(),
-                    status: 'confirmed'
+                    eventData: {
+                        name: event.eventName || event.name,
+                        date: event.date,
+                        time: event.time,
+                        location: event.location,
+                        city: event.city
+                    },
+                    addedBy: 'self'
                 });
 
-                const eventRef = doc(db, 'lists', id);
-                await updateDoc(eventRef, {
-                    attendeesCount: increment(guests.length)
+                // --- NON-BLOCKING BACKGROUND TASKS ---
+                const hostId = event.createdBy;
+                const backgroundTasks = [];
+
+                // Notify host if different from user
+                if (hostId && hostId !== user.uid) {
+                    backgroundTasks.push(
+                        notifyHostNewGuest(hostId, id, event.eventName || event.name, user.displayName || 'Someone')
+                    );
+                }
+
+                // Update event count (exclude host from capacity)
+                const isHost = user.uid === event.createdBy;
+                const countToIncrement = isHost ? cleanGuests.length - 1 : cleanGuests.length;
+
+                if (countToIncrement > 0) {
+                    backgroundTasks.push(updateDoc(doc(db, 'lists', id), {
+                        attendeesCount: increment(countToIncrement)
+                    }));
+                }
+
+                // AUTO-SAVE TO FRIENDS (exclude self)
+                cleanGuests.forEach(guest => {
+                    const friendId = guest.email || guest.phone;
+                    if (friendId) {
+                        const isSelf = guest.email?.toLowerCase() === user.email?.toLowerCase() ||
+                                      guest.phone?.replace(/[^0-9]/g, '') === user.phoneNumber?.replace(/[^0-9]/g, '');
+                        if (!isSelf) {
+                            backgroundTasks.push(setDoc(doc(db, `users/${user.uid}/friends`, friendId), {
+                                name: guest.name,
+                                email: guest.email || null,
+                                phone: guest.phone || null,
+                                gender: guest.gender,
+                                addedAt: serverTimestamp()
+                            }, { merge: true }));
+                        }
+                    }
                 });
 
                 const userRsvps = JSON.parse(localStorage.getItem('userRsvps') || '[]');
@@ -209,27 +335,10 @@ export default function Rsvp() {
                     localStorage.setItem('userRsvps', JSON.stringify(userRsvps));
                 }
 
-                for (const guest of cleanGuests) {
-                    if (guest.email || guest.phone) {
-                        try {
-                            const friendId = guest.email || guest.phone;
-                            const friendRef = doc(db, `users/${user.uid}/friends`, friendId);
-                            await setDoc(friendRef, {
-                                name: guest.name,
-                                email: guest.email || null,
-                                phone: guest.phone || null,
-                                gender: guest.gender,
-                                linkedUid: null,
-                                addedAt: serverTimestamp()
-                            }, { merge: true });
-                        } catch (e) {
-                            console.warn("Friend add failed", e);
-                        }
-                    }
-                }
+                // Fire background tasks (don't wait)
+                Promise.all(backgroundTasks).catch(e => console.warn("Background tasks failed", e));
 
-                alert("RSVP Confirmed!");
-                navigate('/lists');
+                setIsSuccess(true);
             }
         } catch (error) {
             console.error("RSVP failed:", error);
@@ -240,6 +349,27 @@ export default function Rsvp() {
 
     if (loading) return <div className="screen center-msg">Loading...</div>;
     if (!event) return <div className="screen center-msg">Event not found</div>;
+
+    if (isSuccess) {
+        return (
+            <div className="screen active">
+                <div className="screen-content padding-x" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', textAlign: 'center' }}>
+                    <div className="success-animation" style={{ fontSize: 64, marginBottom: 24 }}>🎉</div>
+                    <h2 style={{ fontSize: 24, fontWeight: 800, marginBottom: 12 }}>You're on the list!</h2>
+                    <p style={{ color: 'var(--text-muted)', marginBottom: 32 }}>Confirmation email has been sent to {user.email}.</p>
+
+                    <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                        <button className="primary-btn" onClick={() => navigate('/lists')}>
+                            View My Guestlists
+                        </button>
+                        <button className="text-btn" onClick={() => navigate('/')} style={{ marginTop: 12 }}>
+                            Back to Home
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     const isReadOnly = mode === 'view';
     const headerTitle = mode === 'view' ? 'RSVP Details' : mode === 'edit' ? 'Edit RSVP' : 'Add to list';
@@ -270,11 +400,16 @@ export default function Rsvp() {
 
                 <div id="guestsListContainer">
                     {guests.map((guest, index) => (
-                        <div key={index} className="guest-row" style={{ marginBottom: 16, padding: 16, border: '1px solid var(--border)', borderRadius: 8, background: 'var(--surface)' }}>
+                        <div key={index} className="guest-row" style={{ marginBottom: 16, padding: 16, border: `1px solid ${guestErrors[index] ? 'var(--error)' : 'var(--border)'}`, borderRadius: 8, background: 'var(--surface)' }}>
                             <div className="guest-row-header" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
                                 <span className="guest-label" style={{ fontWeight: 700 }}>{guest.isSelf ? 'You (Primary)' : `Guest ${index + 1}`}</span>
                                 {!guest.isSelf && !isReadOnly && <button type="button" onClick={() => removeGuest(index)} style={{ color: 'red', background: 'none', border: 'none', cursor: 'pointer' }}><i className="fas fa-trash"></i> Remove</button>}
                             </div>
+                            {guestErrors[index] && (
+                                <div style={{ padding: 8, background: 'rgba(255, 59, 48, 0.1)', borderRadius: 4, marginBottom: 12, color: 'var(--error)', fontSize: 13 }}>
+                                    <i className="fas fa-exclamation-circle"></i> {guestErrors[index]}
+                                </div>
+                            )}
                             <div className="guest-inputs" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                                 <input
                                     type="text"
@@ -283,26 +418,27 @@ export default function Rsvp() {
                                     value={guest.name}
                                     onChange={(e) => handleGuestChange(index, 'name', e.target.value)}
                                     disabled={isReadOnly}
-                                    style={{ padding: 12, border: '1px solid var(--border)', borderRadius: 4, width: '100%' }}
+                                    style={{ padding: 12, border: '1px solid var(--border)', borderRadius: 4, width: '100%', background: 'transparent' }}
                                 />
                                 <input
                                     type="email"
-                                    placeholder="Email (optional)"
+                                    placeholder="Gmail"
                                     className="common-input"
                                     value={guest.email || ''}
                                     onChange={(e) => handleGuestChange(index, 'email', e.target.value)}
                                     disabled={isReadOnly}
-                                    style={{ padding: 12, border: '1px solid var(--border)', borderRadius: 4, width: '100%' }}
+                                    style={{ padding: 12, border: '1px solid var(--border)', borderRadius: 4, width: '100%', background: 'transparent' }}
                                 />
                                 <div className="phone-input-group">
                                     <span className="country-code">+91</span>
                                     <input
                                         type="tel"
-                                        placeholder="Phone Number"
+                                        placeholder="Phone"
                                         value={guest.phone}
                                         onChange={(e) => handleGuestChange(index, 'phone', e.target.value)}
                                         maxLength="10"
                                         disabled={isReadOnly}
+                                        style={{ background: 'transparent' }}
                                     />
                                 </div>
                                 <div className="gender-select-row" style={{ display: 'flex', gap: 16 }}>
@@ -355,7 +491,7 @@ export default function Rsvp() {
                     <button
                         onClick={handleSubmit}
                         className="primary-btn full-width-btn"
-                        disabled={(mode === 'create' && !termsAccepted) || submitting}
+                        disabled={(mode === 'create' && !termsAccepted) || submitting || Object.keys(guestErrors).length > 0}
                     >
                         {submitting ? 'Saving...' : mode === 'edit' ? 'Save Changes' : 'Confirm RSVP'}
                     </button>

@@ -41,6 +41,22 @@ export default function Home() {
         };
     };
 
+    const getEventStatus = (event) => {
+        if (!event.closeTime || !event.date) return null;
+        
+        const now = new Date();
+        const eventDate = new Date(event.date);
+        const [hours, minutes] = event.closeTime.split(':');
+        const closeDateTime = new Date(eventDate);
+        closeDateTime.setHours(parseInt(hours), parseInt(minutes));
+        
+        const hoursUntilClose = (closeDateTime - now) / (1000 * 60 * 60);
+        
+        if (hoursUntilClose < 0) return { text: 'Closed', color: 'var(--text-muted)' };
+        if (hoursUntilClose <= 1) return { text: `Closing soon (${event.closeTime})`, color: '#FF9500' };
+        return { text: `Open till ${event.closeTime}`, color: 'var(--text-muted)' };
+    };
+
     return (
         <section className="screen active">
             <header className="home-header sticky-header">
@@ -81,10 +97,12 @@ export default function Home() {
                     ) : (
                         events.map(event => {
                             const { day, month } = formatDate(event.date);
+                            const status = getEventStatus(event);
                             return (
-                                <div key={event.id} className="event-card" onClick={() => navigate(`/event/${event.id}`)}>
+                                <div key={event.id} className="event-card-home" onClick={() => navigate(`/event/${event.id}`)}>
                                     <div className="event-card-img-wrapper">
-                                        <img src={event.flyerUrl || "https://placehold.co/600x400/EEE/31343C?text=Event"} alt={event.name} className="event-card-img" />
+                                        <img src={event.flyerUrl || "https://placehold.co/600x400/EEE/31343C?text=Event"} alt={event.name} className="event-card-img" loading="lazy" />
+                                        <div className="event-card-gradient"></div>
                                         <div className="card-overlay-badge">
                                             <span className="month">{month}</span>
                                             <span className="day">{day}</span>
@@ -92,15 +110,23 @@ export default function Home() {
                                     </div>
                                     <div className="event-card-info">
                                         <h3 className="event-card-title">{event.name || event.eventName || 'Unnamed Event'}</h3>
-                                        <div className="event-card-details">
-                                            <div className="event-card-loc">
-                                                <i className="fas fa-map-marker-alt"></i>
-                                                <span>{event.location}</span>
-                                            </div>
-                                            <div>
-                                                {event.entryType?.join(', ')}
-                                            </div>
+                                        <div className="event-card-location">
+                                            <i className="fas fa-map-marker-alt"></i>
+                                            <span>{event.location}</span>
+                                            {status && (
+                                                <>
+                                                    <span className="event-meta-separator">·</span>
+                                                    <span className="event-status-text" style={{ color: status.color }}>{status.text}</span>
+                                                </>
+                                            )}
                                         </div>
+                                        {event.entryType && event.entryType.length > 0 && (
+                                            <div className="event-card-chips">
+                                                {event.entryType.map((type, idx) => (
+                                                    <span key={idx} className="event-chip">{type}</span>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             );

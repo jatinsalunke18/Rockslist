@@ -1,9 +1,34 @@
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { db } from '../lib/firebase';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 
 export default function Profile() {
-    const { user, logout } = useAuth();
+    const { user, profile, logout } = useAuth();
     const navigate = useNavigate();
+    const [unreadCount, setUnreadCount] = useState(0);
+
+    useEffect(() => {
+        if (!user) return;
+
+        const fetchUnreadCount = async () => {
+            try {
+                const q = query(
+                    collection(db, "notifications"),
+                    where("userId", "==", user.uid),
+                    where("read", "==", false)
+                );
+
+                const snapshot = await getDocs(q);
+                setUnreadCount(snapshot.size);
+            } catch (err) {
+                console.error('Failed to fetch unread count:', err);
+            }
+        };
+
+        fetchUnreadCount();
+    }, [user]);
 
     const handleLogout = async () => {
         await logout();
@@ -24,10 +49,13 @@ export default function Profile() {
             <div className="screen-content profile-content">
                 <div className="profile-header-section">
                     <div className="profile-avatar">
-                        {user?.photoURL ? <img src={user.photoURL} alt="Avatar" /> : <i className="fas fa-user"></i>}
+                        {profile?.photoURL ? <img src={profile.photoURL} alt="Avatar" /> : <i className="fas fa-user"></i>}
                     </div>
-                    <h3 className="profile-name">{user?.displayName || 'User'}</h3>
-                    <p className="profile-email">{user?.email || user?.phoneNumber}</p>
+                    <h3 className="profile-name">{profile?.name || 'User'}</h3>
+                    <div className="profile-contact-info">
+                        <p className="profile-email">{profile?.email}</p>
+                        <p className="profile-phone">{profile?.phone}</p>
+                    </div>
                 </div>
 
                 <div className="profile-menu-section">
@@ -43,9 +71,12 @@ export default function Profile() {
                             <span>My Friends</span>
                             <i className="fas fa-chevron-right"></i>
                         </button>
-                        <button className="menu-item" onClick={() => navigate('/notifications')}>
+                        <button className="menu-item" onClick={() => navigate('/notifications')} style={{ position: 'relative' }}>
                             <i className="fas fa-bell"></i>
                             <span>Notifications</span>
+                            {unreadCount > 0 && (
+                                <span className="notif-badge">{unreadCount > 9 ? '9+' : unreadCount}</span>
+                            )}
                             <i className="fas fa-chevron-right"></i>
                         </button>
                     </div>

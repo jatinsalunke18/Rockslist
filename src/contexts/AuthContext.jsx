@@ -8,7 +8,7 @@ import {
     signInWithPhoneNumber
 } from "firebase/auth";
 import { auth, db } from "../lib/firebase";
-import { collection, query, where, getDocs, writeBatch, doc } from "firebase/firestore";
+import { collection, query, where, getDocs, writeBatch, doc, onSnapshot, getDoc, setDoc } from "firebase/firestore";
 
 const AuthContext = createContext();
 
@@ -18,6 +18,7 @@ export function useAuth() {
 
 export function AuthProvider({ children }) {
     const [user, setUser] = useState(null);
+    const [profile, setProfile] = useState(null);
     const [loading, setLoading] = useState(true);
 
     const linkFriendsOnLogin = async (currentUser) => {
@@ -53,14 +54,48 @@ export function AuthProvider({ children }) {
     };
 
     useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+        let unsubscribeProfile = null;
+
+        const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
             setUser(currentUser);
+            
             if (currentUser) {
+                // Initial check and auto-creation of basic profile if missing
+                const userRef = doc(db, "users", currentUser.uid);
+                const userDoc = await getDoc(userRef);
+                
+                if (!userDoc.exists()) {
+                    await setDoc(userRef, {
+                        uid: currentUser.uid,
+                        email: currentUser.email || "",
+                        phone: currentUser.phoneNumber || "",
+                        name: currentUser.displayName || "",
+                        photoURL: currentUser.photoURL || "",
+                        createdAt: new Date(),
+                        updatedAt: new Date(),
+                    }, { merge: true });
+                }
+
+                // Listen for real-time profile updates
+                unsubscribeProfile = onSnapshot(userRef, (doc) => {
+                    if (doc.exists()) {
+                        setProfile(doc.data());
+                    }
+                });
+
                 await linkFriendsOnLogin(currentUser);
+            } else {
+                setProfile(null);
+                if (unsubscribeProfile) unsubscribeProfile();
             }
+            
             setLoading(false);
         });
-        return unsubscribe;
+
+        return () => {
+            unsubscribeAuth();
+            if (unsubscribeProfile) unsubscribeProfile();
+        };
     }, []);
 
     const loginWithGoogle = () => {
@@ -88,13 +123,21 @@ export function AuthProvider({ children }) {
         return signInWithPhoneNumber(auth, phoneNumber, appVerifier);
     };
 
+    const updateProfile = async (data) => {
+        if (!user) return;
+        const userRef = doc(db, "users", user.uid);
+        await setDoc(userRef, { ...data, updatedAt: new Date() }, { merge: true });
+    };
+
     const value = {
         user,
+        profile,
         loading,
         loginWithGoogle,
         logout,
         setupRecaptcha,
-        loginWithPhone
+        loginWithPhone,
+        updateProfile
     };
 
     return (

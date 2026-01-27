@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { db } from '../lib/firebase';
 import { doc, getDoc, collection, onSnapshot } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
+import { notifyRSVPRemoval, removeUserFromJoinedList } from '../lib/rsvpHelper';
 
 export default function EventDetails() {
     const { id } = useParams();
@@ -13,9 +14,13 @@ export default function EventDetails() {
     const [attendeesCount, setAttendeesCount] = useState(0);
     const [hasJoined, setHasJoined] = useState(false);
     const [userRsvpId, setUserRsvpId] = useState(null);
+    const [hostData, setHostData] = useState(null);
     const [showExitModal, setShowExitModal] = useState(false);
+    const [showDeleteModal, setShowDeleteModal] = useState(false);
     const [exiting, setExiting] = useState(false);
-    const [showActionSheet, setShowActionSheet] = useState(false);
+    const [deleting, setDeleting] = useState(false);
+    const [showRsvpSheet, setShowRsvpSheet] = useState(false);
+    const [showEventMenu, setShowEventMenu] = useState(false);
 
     useEffect(() => {
         const fetchEvent = async () => {
@@ -23,7 +28,17 @@ export default function EventDetails() {
                 const docRef = doc(db, "lists", id);
                 const docSnap = await getDoc(docRef);
                 if (docSnap.exists()) {
-                    setEvent({ id: docSnap.id, ...docSnap.data() });
+                    const data = docSnap.data();
+                    setEvent({ id: docSnap.id, ...data });
+
+                    // Fetch host details
+                    if (data.createdBy) {
+                        const hostRef = doc(db, "users", data.createdBy);
+                        const hostSnap = await getDoc(hostRef);
+                        if (hostSnap.exists()) {
+                            setHostData(hostSnap.data());
+                        }
+                    }
                 }
             } catch (err) {
                 console.error("Error getting document:", err);
@@ -41,35 +56,31 @@ export default function EventDetails() {
             let total = 0;
             let userHasRsvp = false;
             let rsvpDocId = null;
-            
+
             const userEmail = user.email?.toLowerCase().trim();
             const userPhone = user.phoneNumber?.replace(/[^0-9]/g, '');
-            
+
             snapshot.docs.forEach(docSnap => {
                 const data = docSnap.data();
-                if (data.guests && Array.isArray(data.guests)) {
-                    total += data.guests.length;
-                    
-                    // Check if user created this RSVP
+                if (data.guests) {
+                    const count = Array.isArray(data.guests) ? data.guests.length : (typeof data.guests === 'object' ? 1 : 0);
+                    total += count;
+
                     if (data.userId === user.uid) {
                         userHasRsvp = true;
                         rsvpDocId = docSnap.id;
                     }
-                    
-                    // Check if user is in guest list (identity-based matching)
+
                     if (!userHasRsvp) {
                         const matchedGuest = data.guests.find(guest => {
-                            // Match by email (highest priority)
                             if (userEmail && guest.email) {
                                 if (guest.email.toLowerCase().trim() === userEmail) {
                                     return true;
                                 }
                             }
-                            // Match by linkedUid
                             if (guest.linkedUid && guest.linkedUid === user.uid) {
                                 return true;
                             }
-                            // Match by phone (fallback)
                             if (userPhone && guest.phone) {
                                 const guestPhone = guest.phone.replace(/[^0-9]/g, '');
                                 if (guestPhone === userPhone) {
@@ -78,7 +89,7 @@ export default function EventDetails() {
                             }
                             return false;
                         });
-                        
+
                         if (matchedGuest) {
                             userHasRsvp = true;
                             rsvpDocId = docSnap.id;
@@ -86,7 +97,7 @@ export default function EventDetails() {
                     }
                 }
             });
-            
+
             setAttendeesCount(total);
             setHasJoined(userHasRsvp);
             setUserRsvpId(rsvpDocId);
@@ -95,6 +106,7 @@ export default function EventDetails() {
     }, [id, user]);
 
     const handleShare = async () => {
+        setShowEventMenu(false);
         if (navigator.share) {
             try {
                 await navigator.share({
@@ -111,6 +123,13 @@ export default function EventDetails() {
         }
     };
 
+    const handleEmailOrganizer = () => {
+        setShowEventMenu(false);
+        if (hostData?.email) {
+            window.location.href = `mailto:${hostData.email}`;
+        }
+    };
+
     const handleExitGuestlist = async () => {
         if (!userRsvpId) return;
         setExiting(true);
@@ -118,30 +137,50 @@ export default function EventDetails() {
             const { deleteDoc, doc: docRef, updateDoc, increment, getDoc: getDocSnapshot } = await import('firebase/firestore');
             const rsvpRef = docRef(db, `lists/${id}/rsvps`, userRsvpId);
             const rsvpSnap = await getDocSnapshot(rsvpRef);
-            
+
             if (rsvpSnap.exists()) {
                 const data = rsvpSnap.data();
                 const guestCount = data.guests?.length || 0;
-                
+
                 await deleteDoc(rsvpRef);
-                
+
                 const eventRef = docRef(db, 'lists', id);
                 await updateDoc(eventRef, {
                     attendeesCount: increment(-guestCount)
                 });
-                
+
                 const userRsvps = JSON.parse(localStorage.getItem('userRsvps') || '[]');
                 const updatedRsvps = userRsvps.filter(rsvpId => rsvpId !== id);
                 localStorage.setItem('userRsvps', JSON.stringify(updatedRsvps));
+                
+                // Remove from joinedUserIds
+                await removeUserFromJoinedList(id, user.uid);
+                
+                // Create notification for exit using helper
+                await notifyRSVPRemoval(user.uid, id, event?.eventName || event?.name);
             }
-            
+
             setShowExitModal(false);
-            setShowActionSheet(false);
+            setShowRsvpSheet(false);
         } catch (err) {
             console.error('Exit guestlist failed:', err);
             alert('Failed to exit guestlist');
         } finally {
             setExiting(false);
+        }
+    };
+
+    const handleDeleteEvent = async () => {
+        setDeleting(true);
+        try {
+            const { deleteDoc, doc: docRef } = await import('firebase/firestore');
+            await deleteDoc(docRef(db, 'lists', id));
+            navigate('/');
+        } catch (err) {
+            console.error('Delete event failed:', err);
+            alert('Failed to delete event');
+        } finally {
+            setDeleting(false);
         }
     };
 
@@ -156,9 +195,41 @@ export default function EventDetails() {
         <section className="screen active">
             <header className="event-details-header">
                 <button className="icon-btn-plain" onClick={() => navigate(-1)}><i className="fas fa-arrow-left"></i></button>
-                <div className="header-actions" style={{ display: 'flex', gap: 12 }}>
-                    <button className="icon-btn-plain" onClick={handleShare}><i className="fas fa-share-alt"></i></button>
-                    <button className="icon-btn-plain"><i className="fas fa-ellipsis-v"></i></button>
+                <div className="header-actions" style={{ display: 'flex', gap: 12, position: 'relative' }}>
+                    <button className="icon-btn-plain" onClick={() => setShowEventMenu(!showEventMenu)}>
+                        <i className="fas fa-ellipsis-v"></i>
+                    </button>
+                    
+                    {/* Event Menu Dropdown */}
+                    {showEventMenu && (
+                        <>
+                            <div className="dropdown-overlay" onClick={() => setShowEventMenu(false)}></div>
+                            <div className="dropdown-menu">
+                                <button className="dropdown-item" onClick={handleShare}>
+                                    <i className="fas fa-share-alt"></i>
+                                    <span>Share Guestlist</span>
+                                </button>
+                                {hostData?.email && !isCreator && (
+                                    <button className="dropdown-item" onClick={handleEmailOrganizer}>
+                                        <i className="fas fa-envelope"></i>
+                                        <span>Email Organizer</span>
+                                    </button>
+                                )}
+                                {isCreator && (
+                                    <>
+                                        <button className="dropdown-item" onClick={() => { setShowEventMenu(false); navigate(`/create?edit=${id}`); }}>
+                                            <i className="fas fa-edit"></i>
+                                            <span>Edit Event</span>
+                                        </button>
+                                        <button className="dropdown-item dropdown-item-danger" onClick={() => { setShowEventMenu(false); setShowDeleteModal(true); }}>
+                                            <i className="fas fa-trash"></i>
+                                            <span>Delete Event</span>
+                                        </button>
+                                    </>
+                                )}
+                            </div>
+                        </>
+                    )}
                 </div>
             </header>
 
@@ -169,7 +240,7 @@ export default function EventDetails() {
 
                 <div className="event-info-section">
                     <h1 className="event-title">{event.eventName || event.name}</h1>
-                    
+
                     <div className="event-meta-row">
                         <i className="fas fa-map-marker-alt"></i>
                         <span>{event.location}</span>
@@ -217,9 +288,10 @@ export default function EventDetails() {
                 </div>
             </div>
 
+            {/* Bottom Actions */}
             {hasJoined && !isCreator && (
                 <div className="event-bottom-actions">
-                    <button className="action-btn-primary" onClick={() => setShowActionSheet(true)} style={{ width: '100%' }}>
+                    <button className="action-btn-primary" onClick={() => setShowRsvpSheet(true)} style={{ width: '100%' }}>
                         <i className="fas fa-cog"></i>
                         Manage RSVP
                     </button>
@@ -243,9 +315,10 @@ export default function EventDetails() {
                 </div>
             )}
 
-            {showActionSheet && (
+            {/* RSVP Management Bottom Sheet */}
+            {showRsvpSheet && (
                 <>
-                    <div className="action-sheet-overlay" onClick={() => setShowActionSheet(false)}></div>
+                    <div className="action-sheet-overlay" onClick={() => setShowRsvpSheet(false)}></div>
                     <div className="action-sheet">
                         <div className="action-sheet-handle"></div>
                         <div className="action-sheet-content">
@@ -254,15 +327,15 @@ export default function EventDetails() {
                                 <span>RSVP Confirmed</span>
                             </div>
                             <div className="action-sheet-actions">
-                                <button className="action-sheet-btn" onClick={() => { setShowActionSheet(false); navigate(`/rsvp/${id}?view=true&rsvpId=${userRsvpId}`); }}>
+                                <button className="action-sheet-btn" onClick={() => { setShowRsvpSheet(false); navigate(`/rsvp/${id}?view=true&rsvpId=${userRsvpId}`); }}>
                                     <i className="fas fa-eye"></i>
                                     <span>View Entry Details</span>
                                 </button>
-                                <button className="action-sheet-btn" onClick={() => { setShowActionSheet(false); navigate(`/rsvp/${id}?edit=true&rsvpId=${userRsvpId}`); }}>
+                                <button className="action-sheet-btn" onClick={() => { setShowRsvpSheet(false); navigate(`/rsvp/${id}?edit=true&rsvpId=${userRsvpId}`); }}>
                                     <i className="fas fa-edit"></i>
                                     <span>Edit Entry</span>
                                 </button>
-                                <button className="action-sheet-btn action-sheet-btn-danger" onClick={() => { setShowActionSheet(false); setShowExitModal(true); }}>
+                                <button className="action-sheet-btn action-sheet-btn-danger" onClick={() => { setShowRsvpSheet(false); setShowExitModal(true); }}>
                                     <i className="fas fa-sign-out-alt"></i>
                                     <span>Exit Guestlist</span>
                                 </button>
@@ -272,6 +345,7 @@ export default function EventDetails() {
                 </>
             )}
 
+            {/* Exit Confirmation Modal */}
             {showExitModal && (
                 <div className="modal-overlay">
                     <div className="custom-modal">
@@ -285,6 +359,26 @@ export default function EventDetails() {
                             <button className="secondary-btn" onClick={() => setShowExitModal(false)} disabled={exiting}>Cancel</button>
                             <button className="danger-btn" onClick={handleExitGuestlist} disabled={exiting}>
                                 {exiting ? 'Exiting...' : 'Exit'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Delete Event Modal */}
+            {showDeleteModal && (
+                <div className="modal-overlay">
+                    <div className="custom-modal">
+                        <div className="modal-header">
+                            <h3>Delete Event</h3>
+                        </div>
+                        <div className="modal-body">
+                            <p>Are you sure you want to delete this event? All guestlist data will be lost. This action cannot be undone.</p>
+                        </div>
+                        <div className="modal-footer">
+                            <button className="secondary-btn" onClick={() => setShowDeleteModal(false)} disabled={deleting}>Cancel</button>
+                            <button className="danger-btn" onClick={handleDeleteEvent} disabled={deleting}>
+                                {deleting ? 'Deleting...' : 'Delete'}
                             </button>
                         </div>
                     </div>

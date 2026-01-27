@@ -2,7 +2,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 
 export default function BottomNav() {
     const location = useLocation();
-    const hideOnPaths = ['/profile'];
+    const hideOnPaths = ['/profile', '/preview'];
     
     if (hideOnPaths.includes(location.pathname)) return null;
 

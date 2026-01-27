@@ -18,7 +18,27 @@ export default function Friends() {
             const friendsRef = collection(db, `users/${user.uid}/friends`);
             const q = query(friendsRef, orderBy('addedAt', 'desc'));
             const snapshot = await getDocs(q);
-            const friendsList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            
+            // Filter out self and duplicates
+            const userEmail = user.email?.toLowerCase();
+            const userPhone = user.phoneNumber?.replace(/[^0-9]/g, '');
+            const seen = new Set();
+            
+            const friendsList = snapshot.docs
+                .map(doc => ({ id: doc.id, ...doc.data() }))
+                .filter(friend => {
+                    // Exclude self by UID, email, or phone
+                    if (friend.linkedUid === user.uid) return false;
+                    if (userEmail && friend.email?.toLowerCase() === userEmail) return false;
+                    if (userPhone && friend.phone?.replace(/[^0-9]/g, '') === userPhone) return false;
+                    
+                    // Deduplicate by email or phone
+                    const key = friend.email?.toLowerCase() || friend.phone?.replace(/[^0-9]/g, '');
+                    if (seen.has(key)) return false;
+                    seen.add(key);
+                    return true;
+                });
+            
             setFriends(friendsList);
         } catch (err) {
             console.error('Error fetching friends:', err);

@@ -2,33 +2,30 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useState, useEffect } from 'react';
 import { db } from '../lib/firebase';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 
 export default function EditProfile() {
     const navigate = useNavigate();
-    const { user } = useAuth();
+    const { user, profile, updateProfile } = useAuth();
     const [formData, setFormData] = useState({ name: '', email: '', phone: '' });
-    const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
 
     useEffect(() => {
-        const fetchUserData = async () => {
-            try {
-                const userDoc = await getDoc(doc(db, 'users', user.uid));
-                const userData = userDoc.exists() ? userDoc.data() : {};
-                setFormData({
-                    name: userData.name || user.displayName || '',
-                    email: user.email || '',
-                    phone: userData.phone || user.phoneNumber?.replace('+91', '') || ''
-                });
-            } catch (err) {
-                console.error('Error fetching user data:', err);
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchUserData();
-    }, [user]);
+        if (profile) {
+            setFormData({
+                name: profile.name || '',
+                email: profile.email || '',
+                phone: profile.phone ? profile.phone.replace('+91', '') : ''
+            });
+        }
+    }, [profile]);
+
+    const validateUnique = async (field, value) => {
+        const q = query(collection(db, 'users'), where(field, '==', value));
+        const snapshot = await getDocs(q);
+        const docs = snapshot.docs.filter(doc => doc.id !== user.uid);
+        return docs.length === 0;
+    };
 
     const handleSave = async () => {
         setSaving(true);
@@ -39,23 +36,40 @@ export default function EditProfile() {
                 setSaving(false);
                 return;
             }
-            await setDoc(doc(db, 'users', user.uid), {
+
+            const fullPhone = '+91' + phoneFormatted;
+            const normalizedEmail = formData.email.toLowerCase().trim();
+
+            // Uniqueness checks
+            const emailUnique = await validateUnique('email', normalizedEmail);
+            if (!emailUnique) {
+                alert('This email is already linked to another account');
+                setSaving(false);
+                return;
+            }
+
+            const phoneUnique = await validateUnique('phone', fullPhone);
+            if (!phoneUnique) {
+                alert('This phone number is already linked to another account');
+                setSaving(false);
+                return;
+            }
+
+            await updateProfile({
                 name: formData.name,
-                phone: '+91' + phoneFormatted,
-                email: formData.email,
-                updatedAt: new Date()
-            }, { merge: true });
+                phone: fullPhone,
+                email: normalizedEmail
+            });
+
             alert('Profile updated successfully!');
             navigate(-1);
         } catch (err) {
             console.error('Error saving profile:', err);
-            alert('Failed to save profile');
+            alert('Failed to save profile: ' + err.message);
         } finally {
             setSaving(false);
         }
     };
-
-    if (loading) return <div className="screen center-msg">Loading...</div>;
 
     return (
         <section className="screen active">
@@ -75,13 +89,27 @@ export default function EditProfile() {
                 </div>
                 <div className="form-group">
                     <label>Email</label>
-                    <input type="email" value={formData.email} disabled style={{ background: 'var(--background)', cursor: 'not-allowed' }} />
+                    <input
+                        type="email"
+                        value={formData.email}
+                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                        placeholder="Email Address"
+                        disabled={!!user?.email}
+                        style={user?.email ? { background: 'var(--background)', cursor: 'not-allowed' } : {}}
+                    />
                 </div>
                 <div className="form-group">
                     <label>Phone</label>
-                    <div className="phone-input-group">
+                    <div className="phone-input-group" style={user?.phoneNumber ? { background: 'var(--background)', cursor: 'not-allowed' } : {}}>
                         <span className="country-code">+91</span>
-                        <input type="tel" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} placeholder="Phone Number" maxLength="10" />
+                        <input
+                            type="tel"
+                            value={formData.phone}
+                            onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                            placeholder="Phone Number"
+                            maxLength="10"
+                            disabled={!!user?.phoneNumber}
+                        />
                     </div>
                 </div>
                 <button className="primary-btn" style={{ marginTop: 24 }} onClick={handleSave} disabled={saving}>

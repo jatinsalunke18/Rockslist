@@ -1,0 +1,17 @@
+# Ignore artifacts and build outputs
+node_modules
+dist
+build
+coverage
+
+# Ignore configuration files
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Ignore environment files
+.env*
+
+# Ignore docs that shouldn't be reformatted
+CHANGELOG.md
+LICENSE

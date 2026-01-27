@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Login from './pages/Login';
 import Home from './pages/Home';
@@ -6,6 +6,7 @@ import Search from './pages/Search';
 import Guestlists from './pages/Guestlists';
 import Profile from './pages/Profile';
 import CreateList from './pages/CreateList';
+import PreviewGuestlist from './pages/PreviewGuestlist';
 import EventDetails from './pages/EventDetails';
 import Rsvp from './pages/Rsvp';
 import ViewGuests from './pages/ViewGuests';
@@ -18,8 +19,10 @@ import BottomNav from './components/BottomNav';
 
 function AppRoutes() {
   const { user, loading } = useAuth();
+  const location = useLocation();
 
   if (loading) return <div className="screen center-msg">Loading App...</div>;
+
   if (!user) {
     return <Login />;
   }
@@ -37,6 +40,7 @@ function AppRoutes() {
         <Route path="/help" element={<HelpCenter />} />
         <Route path="/privacy" element={<PrivacyPolicy />} />
         <Route path="/create" element={<CreateList />} />
+        <Route path="/preview" element={<PreviewGuestlist />} />
         <Route path="/event/:id" element={<EventDetails />} />
         <Route path="/rsvp/:id" element={<Rsvp />} />
         <Route path="/manage/:id" element={<ViewGuests />} />
