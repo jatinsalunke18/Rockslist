@@ -16,12 +16,12 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/yourusername/rockslist-react.git"
+    "url": "https://github.com/jatinsalunke18/Rockslist.git"
   },
   "bugs": {
-    "url": "https://github.com/yourusername/rockslist-react/issues"
+    "url": "https://github.com/jatinsalunke18/Rockslist/issues"
   },
-  "homepage": "https://github.com/yourusername/rockslist-react#readme",
+  "homepage": "https://github.com/jatinsalunke18/Rockslist#readme",
   "engines": {
     "node": ">=18.0.0",
     "npm": ">=9.0.0"

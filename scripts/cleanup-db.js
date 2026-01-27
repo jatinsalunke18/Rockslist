@@ -20,29 +20,33 @@ const db = getFirestore(app);
 async function clearCollections() {
     console.log("🚀 Starting fresh: Cleaning up Firestore collections...\n");
 
-    const collectionsToDelete = ["users", "lists"];
+    const rootCollections = ["users", "lists", "notifications"];
 
-    for (const collName of collectionsToDelete) {
+    for (const collName of rootCollections) {
         console.log(`🧹 Cleaning collection: ${collName}`);
         try {
             const querySnapshot = await getDocs(collection(db, collName));
-            const batch = writeBatch(db);
-
-            console.log(`   Found ${querySnapshot.size} documents to delete.`);
+            console.log(`   Found ${querySnapshot.size} root documents.`);
 
             for (const docSnap of querySnapshot.docs) {
-                // If the document has subcollections (like rsvps in lists), we might need more logic
-                // For a "fresh start", we mainly care about root documents. 
-                // Note: Firestore delete is shallow, but the app usually queries from document IDs.
-                batch.delete(docSnap.ref);
+                // Delete Subcollections first
+                if (collName === 'lists') {
+                    const rsvps = await getDocs(collection(db, `${collName}/${docSnap.id}/rsvps`));
+                    for (const rsvp of rsvps.docs) await deleteDoc(rsvp.ref);
+                    if (rsvps.size > 0) console.log(`      🗑️ Deleted ${rsvps.size} RSVPs for event ${docSnap.id}`);
+                }
+
+                if (collName === 'users') {
+                    const friends = await getDocs(collection(db, `${collName}/${docSnap.id}/friends`));
+                    for (const friend of friends.docs) await deleteDoc(friend.ref);
+                    if (friends.size > 0) console.log(`      🗑️ Deleted ${friends.size} friends for user ${docSnap.id}`);
+                }
+
+                // Delete Root Doc
+                await deleteDoc(docSnap.ref);
             }
 
-            if (querySnapshot.size > 0) {
-                await batch.commit();
-                console.log(`   ✅ Successfully cleared ${collName}`);
-            } else {
-                console.log(`   ℹ️ ${collName} was already empty.`);
-            }
+            console.log(`   ✅ Finished clearing ${collName}`);
         } catch (error) {
             console.error(`   ❌ Error clearing ${collName}:`, error.message);
         }
