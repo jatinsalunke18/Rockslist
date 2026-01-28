@@ -1,4 +1,5 @@
 import { useAuth } from '../contexts/AuthContext';
+import { indianStates } from '../lib/statesData';
 import { useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { db } from '../lib/firebase';
@@ -10,14 +11,16 @@ export default function Home() {
     const [events, setEvents] = useState([]);
     const [allFetchedEvents, setAllFetchedEvents] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [selectedState, setSelectedState] = useState(localStorage.getItem('preferredState') || 'All Regions');
-    const [selectedCity, setSelectedCity] = useState(localStorage.getItem('preferredCity') || 'All Cities');
+    const [selectedState, setSelectedState] = useState('All Regions');
+    const [selectedCity, setSelectedCity] = useState('All Cities');
     const [showLocationPicker, setShowLocationPicker] = useState(false);
     const [pickerStep, setPickerStep] = useState('state'); // 'state' or 'city'
     const [locationSearch, setLocationSearch] = useState('');
 
     // Dynamic hierarchy derived from data
     const [locationHierarchy, setLocationHierarchy] = useState({ 'All Regions': ['All Cities'] });
+    const [statesWithEvents, setStatesWithEvents] = useState(new Set());
+    const [citiesWithEvents, setCitiesWithEvents] = useState(new Set());
 
     const cityToStateMap = {
         'Mumbai': 'Maharashtra', 'Pune': 'Maharashtra', 'Nagpur': 'Maharashtra', 'Nashik': 'Maharashtra',
@@ -49,31 +52,49 @@ export default function Home() {
 
                 setAllFetchedEvents(eventsList);
 
-                // Build hierarchy from data
+                // Build hierarchy from full Indian states data + active event data
                 const hierarchy = { 'All Regions': ['All Cities'] };
+                const activeStates = new Set();
+                const activeCities = new Set();
 
                 eventsList.forEach(e => {
                     const city = e.city?.trim();
-                    if (!city) return;
-
+                    if (city) activeCities.add(city.toLowerCase());
                     const state = e.state?.trim() || cityToStateMap[city] || 'Other';
-
-                    if (!hierarchy[state]) hierarchy[state] = ['All Cities'];
-                    if (!hierarchy[state].includes(city)) hierarchy[state].push(city);
-
-                    // Add to All Regions
-                    if (!hierarchy['All Regions'].includes(city)) hierarchy['All Regions'].push(city);
+                    if (state) activeStates.add(state.toLowerCase());
                 });
+
+                setStatesWithEvents(activeStates);
+                setCitiesWithEvents(activeCities);
+
+                // Add all Indian states to hierarchy
+                indianStates.forEach(item => {
+                    hierarchy[item.state] = ['All Cities', ...item.cities];
+                });
+
+                // Ensure 'Other' is there
+                if (!hierarchy['Other']) hierarchy['Other'] = ['All Cities', 'Other'];
 
                 // Sort hierarchy
                 const sortedHierarchy = {};
                 Object.keys(hierarchy).sort((a, b) => {
                     if (a === 'All Regions') return -1;
                     if (b === 'All Regions') return 1;
+                    // Move states with events to the top
+                    const aHas = statesWithEvents.has(a.toLowerCase());
+                    const bHas = statesWithEvents.has(b.toLowerCase());
+                    if (aHas && !bHas) return -1;
+                    if (!aHas && bHas) return 1;
                     return a.localeCompare(b);
                 }).forEach(state => {
                     sortedHierarchy[state] = hierarchy[state].sort((a, b) => {
                         if (a === 'All Cities') return -1;
+                        if (b === 'All Cities') return 1;
+                        // Move cities with events to the top
+                        const aHas = citiesWithEvents.has(a.toLowerCase());
+                        const bHas = citiesWithEvents.has(b.toLowerCase());
+                        if (aHas && !bHas) return -1;
+                        if (!aHas && bHas) return 1;
                         return a.localeCompare(b);
                     });
                 });
@@ -278,52 +299,101 @@ export default function Home() {
 
                             <div className="location-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 24, maxHeight: '60vh', overflowY: 'auto', padding: '4px' }}>
                                 {pickerStep === 'state' ? (
-                                    Object.keys(locationHierarchy)
-                                        .filter(s => s.toLowerCase().includes(locationSearch.toLowerCase()))
-                                        .map(state => (
-                                            <button
-                                                key={state}
-                                                className={`location-select-btn ${selectedState === state ? 'active' : ''}`}
-                                                onClick={() => { handleStateSelect(state); setLocationSearch(''); }}
-                                                style={{
-                                                    padding: '16px 12px',
-                                                    borderRadius: 12,
-                                                    border: `1.5px solid ${selectedState === state ? 'var(--primary)' : 'var(--border)'}`,
-                                                    background: selectedState === state ? 'rgba(99, 102, 241, 0.08)' : 'var(--surface)',
-                                                    color: selectedState === state ? 'var(--primary)' : 'var(--text-main)',
-                                                    fontWeight: 600,
-                                                    fontSize: '14px',
-                                                    textAlign: 'center',
-                                                    transition: 'all 0.2s ease'
-                                                }}
-                                            >
-                                                {state}
-                                            </button>
-                                        ))
+                                    <>
+                                        {Object.keys(locationHierarchy)
+                                            .filter(s => s.toLowerCase().includes(locationSearch.toLowerCase()))
+                                            .map(state => {
+                                                const isActive = statesWithEvents.has(state.toLowerCase());
+                                                return (
+                                                    <button
+                                                        key={state}
+                                                        className={`location-select-btn ${selectedState === state ? 'active' : ''}`}
+                                                        onClick={() => { handleStateSelect(state); setLocationSearch(''); }}
+                                                        style={{
+                                                            padding: '16px 12px',
+                                                            borderRadius: 12,
+                                                            border: `1.5px solid ${selectedState === state ? 'var(--primary)' : 'var(--border)'}`,
+                                                            background: selectedState === state ? 'rgba(99, 102, 241, 0.08)' : 'var(--surface)',
+                                                            color: selectedState === state ? 'var(--primary)' : 'var(--text-main)',
+                                                            fontWeight: 600,
+                                                            fontSize: '14px',
+                                                            textAlign: 'center',
+                                                            transition: 'all 0.2s ease',
+                                                            position: 'relative'
+                                                        }}
+                                                    >
+                                                        {state}
+                                                        {isActive && <span style={{ position: 'absolute', top: 4, right: 4, width: 8, height: 8, background: 'var(--success)', borderRadius: '50%', border: '2px solid var(--surface)' }}></span>}
+                                                    </button>
+                                                );
+                                            })}
+
+                                        {/* Smart City Suggestions during State search */}
+                                        {locationSearch.length > 1 && Object.entries(locationHierarchy).map(([state, cities]) => (
+                                            cities
+                                                .filter(c => c !== 'All Cities' && c.toLowerCase().includes(locationSearch.toLowerCase()))
+                                                .map(city => (
+                                                    <button
+                                                        key={`${state}-${city}`}
+                                                        className="location-select-btn"
+                                                        onClick={() => {
+                                                            setSelectedState(state);
+                                                            setSelectedCity(city);
+                                                            setShowLocationPicker(false);
+                                                            setLocationSearch('');
+                                                        }}
+                                                        style={{
+                                                            padding: '16px 12px',
+                                                            borderRadius: 12,
+                                                            border: '1.5px solid var(--border)',
+                                                            background: 'var(--surface)',
+                                                            color: 'var(--text-main)',
+                                                            fontWeight: 500,
+                                                            fontSize: '13px',
+                                                            textAlign: 'center',
+                                                            position: 'relative'
+                                                        }}
+                                                    >
+                                                        <span style={{ display: 'block' }}>{city}</span>
+                                                        <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{state}</span>
+                                                    </button>
+                                                ))
+                                        ))}
+                                    </>
                                 ) : (
                                     locationHierarchy[selectedState]?.filter(c => c.toLowerCase().includes(locationSearch.toLowerCase()))
-                                        .map(city => (
-                                            <button
-                                                key={city}
-                                                className={`location-select-btn ${selectedCity === city ? 'active' : ''}`}
-                                                onClick={() => { handleCitySelect(city); setLocationSearch(''); }}
-                                                style={{
-                                                    padding: '16px 12px',
-                                                    borderRadius: 12,
-                                                    border: `1.5px solid ${selectedCity === city ? 'var(--primary)' : 'var(--border)'}`,
-                                                    background: selectedCity === city ? 'rgba(99, 102, 241, 0.08)' : 'var(--surface)',
-                                                    color: selectedCity === city ? 'var(--primary)' : 'var(--text-main)',
-                                                    fontWeight: 600,
-                                                    fontSize: '14px',
-                                                    textAlign: 'center',
-                                                    transition: 'all 0.2s ease'
-                                                }}
-                                            >
-                                                {city}
-                                            </button>
-                                        ))
+                                        .map(city => {
+                                            const isActive = citiesWithEvents.has(city.toLowerCase());
+                                            return (
+                                                <button
+                                                    key={city}
+                                                    className={`location-select-btn ${selectedCity === city ? 'active' : ''}`}
+                                                    onClick={() => { handleCitySelect(city); setLocationSearch(''); }}
+                                                    style={{
+                                                        padding: '16px 12px',
+                                                        borderRadius: 12,
+                                                        border: `1.5px solid ${selectedCity === city ? 'var(--primary)' : 'var(--border)'}`,
+                                                        background: selectedCity === city ? 'rgba(99, 102, 241, 0.08)' : 'var(--surface)',
+                                                        color: selectedCity === city ? 'var(--primary)' : 'var(--text-main)',
+                                                        fontWeight: 600,
+                                                        fontSize: '14px',
+                                                        textAlign: 'center',
+                                                        transition: 'all 0.2s ease',
+                                                        position: 'relative'
+                                                    }}
+                                                >
+                                                    {city}
+                                                    {isActive && <span style={{ position: 'absolute', top: 4, right: 4, width: 8, height: 8, background: 'var(--success)', borderRadius: '50%', border: '2px solid var(--surface)' }}></span>}
+                                                </button>
+                                            );
+                                        })
                                 )}
                             </div>
+                            {locationSearch && (
+                                <p style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center', marginTop: -12 }}>
+                                    Showing results for "{locationSearch}"
+                                </p>
+                            )}
                         </div>
                     </div>
                 </>

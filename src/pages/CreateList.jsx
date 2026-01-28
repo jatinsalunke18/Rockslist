@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { db, storage } from '../lib/firebase';
 import { doc, getDoc, deleteDoc, collection, getDocs, addDoc, updateDoc } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
+import { indianStates } from '../lib/statesData';
 
 export default function CreateList() {
     const navigate = useNavigate();
@@ -24,6 +25,7 @@ export default function CreateList() {
         location: '',
         state: '',
         city: '',
+        customCity: '',
         maxAttendees: '',
         closeTime: '',
         ticketLink: '',
@@ -375,63 +377,47 @@ export default function CreateList() {
                                     setFormData(prev => ({ ...prev, state: val, city: '' }));
                                 }}>
                                     <option value="" disabled>Select State</option>
-                                    <option value="Maharashtra">Maharashtra</option>
-                                    <option value="Karnataka">Karnataka</option>
-                                    <option value="Delhi NCR">Delhi NCR</option>
-                                    <option value="Telangana">Telangana</option>
-                                    <option value="Goa">Goa</option>
-                                    <option value="Tamil Nadu">Tamil Nadu</option>
-                                    <option value="West Bengal">West Bengal</option>
-                                    <option value="Gujarat">Gujarat</option>
-                                    <option value="Rajasthan">Rajasthan</option>
+                                    {indianStates.map(item => (
+                                        <option key={item.state} value={item.state}>{item.state}</option>
+                                    ))}
                                     <option value="Other">Other</option>
                                 </select>
                             </div>
 
                             <div className="form-group">
                                 <label htmlFor="city">City *</label>
-                                <select id="city" required value={formData.city} onChange={handleChange} disabled={!formData.state}>
-                                    <option value="" disabled>{formData.state ? 'Select City' : 'Select State First'}</option>
-                                    {formData.state === 'Maharashtra' && (
-                                        <>
-                                            <option value="Mumbai">Mumbai</option>
-                                            <option value="Pune">Pune</option>
-                                            <option value="Nagpur">Nagpur</option>
-                                            <option value="Nashik">Nashik</option>
-                                        </>
-                                    )}
-                                    {formData.state === 'Karnataka' && (
-                                        <>
-                                            <option value="Bangalore">Bangalore</option>
-                                            <option value="Mangalore">Mangalore</option>
-                                            <option value="Mysore">Mysore</option>
-                                        </>
-                                    )}
-                                    {formData.state === 'Delhi NCR' && (
-                                        <>
-                                            <option value="Delhi">Delhi</option>
-                                            <option value="Noida">Noida</option>
-                                            <option value="Gurgaon">Gurgaon</option>
-                                        </>
-                                    )}
-                                    {formData.state === 'Telangana' && <option value="Hyderabad">Hyderabad</option>}
-                                    {formData.state === 'Goa' && (
-                                        <>
-                                            <option value="North Goa">North Goa</option>
-                                            <option value="South Goa">South Goa</option>
-                                        </>
-                                    )}
-                                    {formData.state === 'Tamil Nadu' && <option value="Chennai">Chennai</option>}
-                                    {formData.state === 'West Bengal' && <option value="Kolkata">Kolkata</option>}
-                                    {formData.state === 'Gujarat' && (
-                                        <>
-                                            <option value="Ahmedabad">Ahmedabad</option>
-                                            <option value="Surat">Surat</option>
-                                        </>
-                                    )}
-                                    {formData.state === 'Rajasthan' && <option value="Jaipur">Jaipur</option>}
-                                    {formData.state === 'Other' && <option value="Other">Other</option>}
-                                </select>
+                                {formData.state === 'Other' ? (
+                                    <input
+                                        type="text"
+                                        id="city"
+                                        required
+                                        placeholder="Enter city name"
+                                        value={formData.city}
+                                        onChange={handleChange}
+                                    />
+                                ) : (
+                                    <select id="city" required value={formData.city} onChange={handleChange} disabled={!formData.state}>
+                                        <option value="" disabled>{formData.state ? 'Select City' : 'Select State First'}</option>
+                                        {indianStates.find(s => s.state === formData.state)?.cities.map(city => (
+                                            <option key={city} value={city}>{city}</option>
+                                        ))}
+                                        <option value="Other">Other</option>
+                                    </select>
+                                )}
+                                {formData.city === 'Other' && formData.state !== 'Other' && (
+                                    <input
+                                        type="text"
+                                        placeholder="Enter custom city name"
+                                        style={{ marginTop: 8 }}
+                                        value={formData.customCity || ''}
+                                        onChange={(e) => setFormData(prev => ({ ...prev, customCity: e.target.value }))}
+                                        onBlur={() => {
+                                            if (formData.customCity) {
+                                                setFormData(prev => ({ ...prev, city: prev.customCity }));
+                                            }
+                                        }}
+                                    />
+                                )}
                             </div>
 
                             <div className="form-group">
