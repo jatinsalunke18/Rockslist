@@ -368,7 +368,15 @@ export default function CreateList() {
 
                             <div className="form-group">
                                 <label htmlFor="city">City *</label>
-                                <input type="text" id="city" required placeholder="e.g. New York" value={formData.city} onChange={handleChange} />
+                                <select id="city" required value={formData.city} onChange={handleChange}>
+                                    <option value="" disabled>Select City</option>
+                                    <option value="Mumbai">Mumbai</option>
+                                    <option value="Pune">Pune</option>
+                                    <option value="Bangalore">Bangalore</option>
+                                    <option value="Delhi">Delhi</option>
+                                    <option value="Goa">Goa</option>
+                                    <option value="Hyderabad">Hyderabad</option>
+                                </select>
                             </div>
 
                             <div className="form-group">
@@ -561,9 +569,9 @@ export default function CreateList() {
                                 </div>
                             </div>
                             <div className="modal-footer" style={{ display: 'flex', gap: 12, padding: '16px 24px', borderTop: '1px solid var(--border)' }}>
-                                <button 
-                                    type="button" 
-                                    className="secondary-btn" 
+                                <button
+                                    type="button"
+                                    className="secondary-btn"
                                     onClick={() => {
                                         setShowGuestModal(false);
                                         setManualGuest({ name: '', phone: '', email: '', gender: 'male' });
@@ -572,8 +580,8 @@ export default function CreateList() {
                                 >
                                     Cancel
                                 </button>
-                                <button 
-                                    type="submit" 
+                                <button
+                                    type="submit"
                                     className="primary-btn"
                                     disabled={!manualGuest.name || !manualGuest.phone}
                                     style={{ flex: 1, height: 48, fontSize: 15, fontWeight: 600 }}

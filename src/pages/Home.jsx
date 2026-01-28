@@ -9,11 +9,22 @@ export default function Home() {
     const navigate = useNavigate();
     const [events, setEvents] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [selectedCity, setSelectedCity] = useState(localStorage.getItem('preferredCity') || 'Mumbai');
+    const [showCityPicker, setShowCityPicker] = useState(false);
+
+    const cities = ['Mumbai', 'Pune', 'Bangalore', 'Delhi', 'Goa', 'Hyderabad'];
 
     useEffect(() => {
         const fetchEvents = async () => {
+            setLoading(true);
             try {
-                const q = query(collection(db, "lists"), orderBy("date", "asc"), limit(50));
+                let q = query(
+                    collection(db, "lists"),
+                    where("city", "==", selectedCity),
+                    orderBy("date", "asc"),
+                    limit(50)
+                );
+
                 const querySnapshot = await getDocs(q);
                 const eventsList = querySnapshot.docs.map(doc => ({
                     id: doc.id,
@@ -22,13 +33,24 @@ export default function Home() {
                 setEvents(eventsList);
             } catch (err) {
                 console.error("Error fetching events:", err);
+                // Fallback to client-side filtering if index is missing (common in fresh setups)
+                const q = query(collection(db, "lists"), orderBy("date", "asc"), limit(100));
+                const snapshot = await getDocs(q);
+                const all = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                setEvents(all.filter(e => e.city === selectedCity));
             } finally {
                 setLoading(false);
             }
         };
 
         fetchEvents();
-    }, []);
+        localStorage.setItem('preferredCity', selectedCity);
+    }, [selectedCity]);
+
+    const handleCitySelect = (city) => {
+        setSelectedCity(city);
+        setShowCityPicker(false);
+    };
 
     const formatDate = (dateString) => {
         if (!dateString) return { day: '?', month: '???' };
@@ -64,8 +86,8 @@ export default function Home() {
                     <span className="logo-text-medium">Rocks Guestlist</span>
                 </div>
                 <div className="header-center">
-                    <div className="location-pill">
-                        <span>City</span>
+                    <div className="location-pill" onClick={() => setShowCityPicker(true)}>
+                        <span>{selectedCity}</span>
                         <i className="fas fa-chevron-down"></i>
                     </div>
                 </div>
@@ -79,7 +101,7 @@ export default function Home() {
             <div className="screen-content">
                 <div className="greeting-card glass-card">
                     <h2>hey <span>{user?.displayName || user?.phoneNumber || 'User'}</span>,</h2>
-                    <p>you can go for <span className="highlight-count">{events.length}</span> parties today for free in <span>City</span></p>
+                    <p>you can go for <span className="highlight-count">{events.length}</span> parties today for free in <span>{selectedCity}</span></p>
                 </div>
 
                 <div className="section-header" style={{ marginBottom: 16 }}>
@@ -138,6 +160,39 @@ export default function Home() {
             <button className="fab-btn" onClick={() => navigate('/create')}>
                 <i className="fas fa-plus"></i>
             </button>
+
+            {/* City Picker Action Sheet */}
+            {showCityPicker && (
+                <>
+                    <div className="action-sheet-overlay" onClick={() => setShowCityPicker(false)}></div>
+                    <div className="action-sheet">
+                        <div className="action-sheet-handle"></div>
+                        <div className="action-sheet-content">
+                            <h3 style={{ marginBottom: 20, fontSize: 18, fontWeight: 700 }}>Select City</h3>
+                            <div className="city-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
+                                {cities.map(city => (
+                                    <button
+                                        key={city}
+                                        className={`city-select-btn ${selectedCity === city ? 'active' : ''}`}
+                                        onClick={() => handleCitySelect(city)}
+                                        style={{
+                                            padding: '16px',
+                                            borderRadius: 12,
+                                            border: `1px solid ${selectedCity === city ? 'var(--primary)' : 'var(--border)'}`,
+                                            background: selectedCity === city ? 'rgba(99, 102, 241, 0.1)' : 'var(--surface)',
+                                            color: selectedCity === city ? 'var(--primary)' : 'var(--text-main)',
+                                            fontWeight: 600,
+                                            textAlign: 'center'
+                                        }}
+                                    >
+                                        {city}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                </>
+            )}
         </section>
     );
 }
