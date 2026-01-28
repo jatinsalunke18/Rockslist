@@ -4,6 +4,8 @@ import { db } from '../lib/firebase';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, increment, getDoc, serverTimestamp, getDocs, setDoc } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
 import { createRSVP } from '../lib/rsvpHelper';
+import { jsPDF } from 'jspdf';
+import 'jspdf-autotable';
 
 export default function ViewGuests() {
     const { id } = useParams(); // eventId
@@ -120,7 +122,7 @@ export default function ViewGuests() {
             const friendId = cleanGuest.email || cleanGuest.phone;
             if (friendId) {
                 const isSelf = cleanGuest.email?.toLowerCase() === user.email?.toLowerCase() ||
-                              cleanGuest.phone?.replace(/[^0-9]/g, '') === user.phoneNumber?.replace(/[^0-9]/g, '');
+                    cleanGuest.phone?.replace(/[^0-9]/g, '') === user.phoneNumber?.replace(/[^0-9]/g, '');
                 if (!isSelf) {
                     await setDoc(doc(db, `users/${user.uid}/friends`, friendId), {
                         name: cleanGuest.name,
@@ -158,7 +160,7 @@ export default function ViewGuests() {
             });
 
             // Use centralized RSVP helper for each friend (includes email sending)
-            const rsvpPromises = selectedFriendsData.map(guest => 
+            const rsvpPromises = selectedFriendsData.map(guest =>
                 createRSVP({
                     eventId: id,
                     userId: user.uid,
@@ -239,6 +241,58 @@ export default function ViewGuests() {
         }
     };
 
+    const handleDownloadPDF = () => {
+        const doc = new jsPDF();
+        const eventName = event?.eventName || event?.name || 'Event';
+
+        // Add Title
+        doc.setFontSize(20);
+        doc.setTextColor(33, 33, 33);
+        doc.text(`Guest List: ${eventName}`, 14, 22);
+
+        // Add Meta Info
+        doc.setFontSize(11);
+        doc.setTextColor(100, 100, 100);
+        doc.text(`Date: ${event?.date || 'N/A'} | Venue: ${event?.location || 'N/A'}`, 14, 30);
+        doc.text(`Total Guests: ${stats.total} (M: ${stats.male}, F: ${stats.female}, O: ${stats.other})`, 14, 38);
+        doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 46);
+
+        // Define table columns
+        const tableColumn = ["#", "Name", "Phone Number", "Email Address", "Gender", "Status"];
+
+        // Define table rows
+        const tableRows = filteredGuests.map((guest, index) => [
+            index + 1,
+            guest.name,
+            guest.phone || 'N/A',
+            guest.email || 'N/A',
+            guest.gender ? guest.gender.charAt(0).toUpperCase() + guest.gender.slice(1) : 'N/A',
+            guest.arrived ? 'Arrived' : 'Pending'
+        ]);
+
+        // Generate table
+        doc.autoTable({
+            head: [tableColumn],
+            body: tableRows,
+            startY: 55,
+            theme: 'grid',
+            headStyles: { fillColor: [99, 102, 241], textColor: [255, 255, 255], fontStyle: 'bold' },
+            styles: { fontSize: 9, cellPadding: 3 },
+            alternateRowStyles: { fillColor: [250, 250, 250] },
+            columnStyles: {
+                0: { cellWidth: 10 },
+                1: { cellWidth: 'auto' },
+                2: { cellWidth: 35 },
+                3: { cellWidth: 50 },
+                4: { cellWidth: 20 },
+                5: { cellWidth: 25 }
+            }
+        });
+
+        // Save PDF
+        doc.save(`GuestList_${eventName.replace(/\s+/g, '_')}.pdf`);
+    };
+
     const filteredGuests = guests.filter(g =>
         g.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (g.phone && g.phone.includes(searchTerm))
@@ -254,7 +308,13 @@ export default function ViewGuests() {
                     <span className="logo-text-medium">Guest List</span>
                 </div>
                 <div className="header-right" style={{ display: 'flex', gap: 8 }}>
-                    <button className="icon-btn-plain" title="Download List"><i className="fas fa-download"></i></button>
+                    <button
+                        className="icon-btn-plain"
+                        title="Download List"
+                        onClick={handleDownloadPDF}
+                    >
+                        <i className="fas fa-download"></i>
+                    </button>
                 </div>
             </header>
 
@@ -311,10 +371,10 @@ export default function ViewGuests() {
                         </div>
                     ) : (
                         filteredGuests.map((guest, i) => (
-                            <div key={i} style={{ 
-                                padding: 16, 
-                                background: guest.arrived ? 'rgba(52, 199, 89, 0.05)' : 'var(--surface)', 
-                                borderRadius: 12, 
+                            <div key={i} style={{
+                                padding: 16,
+                                background: guest.arrived ? 'rgba(52, 199, 89, 0.05)' : 'var(--surface)',
+                                borderRadius: 12,
                                 border: `1px solid ${guest.arrived ? 'rgba(52, 199, 89, 0.2)' : 'var(--border)'}`,
                                 marginBottom: 12,
                                 transition: 'all 0.2s ease'
@@ -339,12 +399,12 @@ export default function ViewGuests() {
                                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
                                             <span style={{ fontWeight: 700, fontSize: 16, color: 'var(--text-main)' }}>{guest.name}</span>
                                             {guest.arrived && (
-                                                <span style={{ 
-                                                    fontSize: 11, 
-                                                    fontWeight: 600, 
-                                                    color: 'var(--success)', 
-                                                    background: 'rgba(52, 199, 89, 0.15)', 
-                                                    padding: '2px 8px', 
+                                                <span style={{
+                                                    fontSize: 11,
+                                                    fontWeight: 600,
+                                                    color: 'var(--success)',
+                                                    background: 'rgba(52, 199, 89, 0.15)',
+                                                    padding: '2px 8px',
                                                     borderRadius: 12,
                                                     display: 'inline-flex',
                                                     alignItems: 'center',
@@ -355,23 +415,23 @@ export default function ViewGuests() {
                                                 </span>
                                             )}
                                             {guest.isHostEntry && (
-                                                <span style={{ 
-                                                    fontSize: 10, 
-                                                    fontWeight: 600, 
-                                                    color: 'var(--primary)', 
-                                                    background: 'rgba(99, 102, 241, 0.1)', 
-                                                    padding: '2px 6px', 
-                                                    borderRadius: 4 
+                                                <span style={{
+                                                    fontSize: 10,
+                                                    fontWeight: 600,
+                                                    color: 'var(--primary)',
+                                                    background: 'rgba(99, 102, 241, 0.1)',
+                                                    padding: '2px 6px',
+                                                    borderRadius: 4
                                                 }}>Host</span>
                                             )}
                                             {guest.isManualEntry && (
-                                                <span style={{ 
-                                                    fontSize: 10, 
-                                                    fontWeight: 600, 
-                                                    color: '#666', 
-                                                    background: '#f5f5f5', 
-                                                    padding: '2px 6px', 
-                                                    borderRadius: 4 
+                                                <span style={{
+                                                    fontSize: 10,
+                                                    fontWeight: 600,
+                                                    color: '#666',
+                                                    background: '#f5f5f5',
+                                                    padding: '2px 6px',
+                                                    borderRadius: 4
                                                 }}>Added by Host</span>
                                             )}
                                         </div>
@@ -515,21 +575,21 @@ export default function ViewGuests() {
                                 </div>
                             </div>
                             <div className="modal-footer" style={{ display: 'flex', gap: 12, padding: '16px 24px', borderTop: '1px solid var(--border)' }}>
-                                <button 
-                                    type="button" 
-                                    className="secondary-btn" 
+                                <button
+                                    type="button"
+                                    className="secondary-btn"
                                     onClick={() => {
                                         setShowManualAdd(false);
                                         setManualGuest({ name: '', phone: '', email: '', gender: 'male' });
-                                    }} 
+                                    }}
                                     disabled={isSaving}
                                     style={{ flex: 1, height: 48, fontSize: 15, fontWeight: 600 }}
                                 >
                                     Cancel
                                 </button>
-                                <button 
-                                    type="submit" 
-                                    className="primary-btn" 
+                                <button
+                                    type="submit"
+                                    className="primary-btn"
                                     disabled={isSaving || !manualGuest.name || !manualGuest.phone}
                                     style={{ flex: 1, height: 48, fontSize: 15, fontWeight: 600 }}
                                 >
