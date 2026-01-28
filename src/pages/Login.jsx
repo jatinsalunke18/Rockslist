@@ -3,7 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 
 export default function Login() {
-    const { loginWithGoogle, setupRecaptcha, loginWithPhone } = useAuth();
+    const { loginWithGoogle, setupRecaptcha, clearRecaptcha, loginWithPhone } = useAuth();
     const [phoneNumber, setPhoneNumber] = useState('');
     const [otp, setOtp] = useState('');
     const [showOtp, setShowOtp] = useState(false);
@@ -13,7 +13,8 @@ export default function Login() {
 
     useEffect(() => {
         setupRecaptcha('recaptcha-container');
-    }, [setupRecaptcha]);
+        return () => clearRecaptcha();
+    }, []);
 
     const handleSendOtp = async (e) => {
         e.preventDefault();
@@ -21,11 +22,19 @@ export default function Login() {
         setLoading(true);
         try {
             const formattedPhone = `+91${phoneNumber}`;
+            console.log('Attempting login with:', formattedPhone);
             const result = await loginWithPhone(formattedPhone);
             setConfirmationResult(result);
             setShowOtp(true);
         } catch (err) {
-            setError(err.message);
+            console.error('Phone Auth Error:', err);
+            if (err.code === 'auth/operation-not-allowed') {
+                setError('Phone authentication is not enabled in Firebase Console.');
+            } else if (err.code === 'auth/invalid-phone-number') {
+                setError('Invalid phone number format.');
+            } else {
+                setError(err.message);
+            }
         }
         setLoading(false);
     };

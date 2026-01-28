@@ -27,7 +27,7 @@ export function AuthProvider({ children }) {
             const email = currentUser.email.toLowerCase();
             const usersRef = collection(db, "users");
             const usersSnapshot = await getDocs(usersRef);
-            
+
             const batch = writeBatch(db);
             let updateCount = 0;
 
@@ -35,7 +35,7 @@ export function AuthProvider({ children }) {
                 const friendsRef = collection(db, `users/${userDoc.id}/friends`);
                 const q = query(friendsRef, where("email", "==", email));
                 const friendsSnapshot = await getDocs(q);
-                
+
                 friendsSnapshot.docs.forEach(friendDoc => {
                     const friendData = friendDoc.data();
                     if (!friendData.linkedUid) {
@@ -58,12 +58,12 @@ export function AuthProvider({ children }) {
 
         const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
             setUser(currentUser);
-            
+
             if (currentUser) {
                 // Initial check and auto-creation of basic profile if missing
                 const userRef = doc(db, "users", currentUser.uid);
                 const userDoc = await getDoc(userRef);
-                
+
                 if (!userDoc.exists()) {
                     await setDoc(userRef, {
                         uid: currentUser.uid,
@@ -88,7 +88,7 @@ export function AuthProvider({ children }) {
                 setProfile(null);
                 if (unsubscribeProfile) unsubscribeProfile();
             }
-            
+
             setLoading(false);
         });
 
@@ -108,13 +108,29 @@ export function AuthProvider({ children }) {
     };
 
     const setupRecaptcha = (elementId) => {
-        if (!window.recaptchaVerifier) {
+        try {
+            if (window.recaptchaVerifier) {
+                window.recaptchaVerifier.clear();
+                window.recaptchaVerifier = null;
+            }
             window.recaptchaVerifier = new RecaptchaVerifier(auth, elementId, {
                 'size': 'invisible',
-                'callback': () => {
+                'callback': (response) => {
                     // reCAPTCHA solved
+                },
+                'expired-callback': () => {
+                    // Response expired. Ask user to solve reCAPTCHA again.
                 }
             });
+        } catch (err) {
+            console.error("Recaptcha Setup Error:", err);
+        }
+    };
+
+    const clearRecaptcha = () => {
+        if (window.recaptchaVerifier) {
+            window.recaptchaVerifier.clear();
+            window.recaptchaVerifier = null;
         }
     };
 
@@ -136,6 +152,7 @@ export function AuthProvider({ children }) {
         loginWithGoogle,
         logout,
         setupRecaptcha,
+        clearRecaptcha,
         loginWithPhone,
         updateProfile
     };
