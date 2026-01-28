@@ -9,20 +9,21 @@ export default function Home() {
     const navigate = useNavigate();
     const [events, setEvents] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [selectedCity, setSelectedCity] = useState(localStorage.getItem('preferredCity') || 'Mumbai');
+    const [selectedCity, setSelectedCity] = useState(localStorage.getItem('preferredCity') || 'All Cities');
     const [showCityPicker, setShowCityPicker] = useState(false);
 
-    const cities = ['Mumbai', 'Pune', 'Bangalore', 'Delhi', 'Goa', 'Hyderabad'];
+    const cities = ['All Cities', 'Mumbai', 'Pune', 'Bangalore', 'Delhi', 'Goa', 'Hyderabad'];
 
     useEffect(() => {
         const fetchEvents = async () => {
             setLoading(true);
             try {
-                let q = query(
+                // Fetch all recent events and filter in JS for total reliability
+                // This avoids "Missing Index" errors and works instantly
+                const q = query(
                     collection(db, "lists"),
-                    where("city", "==", selectedCity),
                     orderBy("date", "asc"),
-                    limit(50)
+                    limit(150)
                 );
 
                 const querySnapshot = await getDocs(q);
@@ -30,14 +31,21 @@ export default function Home() {
                     id: doc.id,
                     ...doc.data()
                 }));
-                setEvents(eventsList);
+
+                // Apply filtering
+                if (selectedCity === 'All Cities') {
+                    setEvents(eventsList);
+                } else {
+                    setEvents(eventsList.filter(e =>
+                        e.city?.trim().toLowerCase() === selectedCity.toLowerCase()
+                    ));
+                }
             } catch (err) {
                 console.error("Error fetching events:", err);
-                // Fallback to client-side filtering if index is missing (common in fresh setups)
-                const q = query(collection(db, "lists"), orderBy("date", "asc"), limit(100));
-                const snapshot = await getDocs(q);
-                const all = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                setEvents(all.filter(e => e.city === selectedCity));
+                // Last resort fallback if orderby fails
+                const snap = await getDocs(query(collection(db, "lists"), limit(100)));
+                const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                setEvents(selectedCity === 'All Cities' ? all : all.filter(e => e.city === selectedCity));
             } finally {
                 setLoading(false);
             }
