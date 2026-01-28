@@ -4,6 +4,7 @@ import { db } from '../lib/firebase';
 import { doc, getDoc, collection, onSnapshot } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
 import { notifyRSVPRemoval, removeUserFromJoinedList } from '../lib/rsvpHelper';
+import { isEventClosed } from '../lib/validation';
 
 export default function EventDetails() {
     const { id } = useParams();
@@ -239,7 +240,14 @@ export default function EventDetails() {
                 </div>
 
                 <div className="event-info-section">
-                    <h1 className="event-title">{event.eventName || event.name}</h1>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <h1 className="event-title" style={{ margin: 0 }}>{event.eventName || event.name}</h1>
+                        {isEventClosed(event) && (
+                            <span className="event-status-badge closed" style={{ background: 'var(--error)', color: 'white', padding: '4px 10px', borderRadius: 20, fontSize: 12, fontWeight: 700 }}>
+                                CLOSED
+                            </span>
+                        )}
+                    </div>
 
                     <div className="event-meta-row">
                         <i className="fas fa-map-marker-alt"></i>
@@ -300,8 +308,13 @@ export default function EventDetails() {
 
             {!hasJoined && !isCreator && (
                 <div className="event-bottom-actions">
-                    <button className="action-btn-primary" onClick={() => navigate(`/rsvp/${id}`)} style={{ width: '100%' }}>
-                        Join Guestlist
+                    <button
+                        className="action-btn-primary"
+                        onClick={() => navigate(`/rsvp/${id}`)}
+                        style={{ width: '100%', opacity: isEventClosed(event) ? 0.6 : 1 }}
+                        disabled={isEventClosed(event)}
+                    >
+                        {isEventClosed(event) ? 'Guestlist Closed' : 'Join Guestlist'}
                     </button>
                 </div>
             )}
@@ -331,13 +344,23 @@ export default function EventDetails() {
                                     <i className="fas fa-eye"></i>
                                     <span>View Entry Details</span>
                                 </button>
-                                <button className="action-sheet-btn" onClick={() => { setShowRsvpSheet(false); navigate(`/rsvp/${id}?edit=true&rsvpId=${userRsvpId}`); }}>
+                                <button
+                                    className="action-sheet-btn"
+                                    onClick={() => { setShowRsvpSheet(false); navigate(`/rsvp/${id}?edit=true&rsvpId=${userRsvpId}`); }}
+                                    disabled={isEventClosed(event)}
+                                    style={{ opacity: isEventClosed(event) ? 0.5 : 1 }}
+                                >
                                     <i className="fas fa-edit"></i>
-                                    <span>Edit Entry</span>
+                                    <span>Edit Entry {isEventClosed(event) && '(Closed)'}</span>
                                 </button>
-                                <button className="action-sheet-btn action-sheet-btn-danger" onClick={() => { setShowRsvpSheet(false); setShowExitModal(true); }}>
+                                <button
+                                    className="action-sheet-btn action-sheet-btn-danger"
+                                    onClick={() => { setShowRsvpSheet(false); setShowExitModal(true); }}
+                                    disabled={isEventClosed(event)}
+                                    style={{ opacity: isEventClosed(event) ? 0.5 : 1 }}
+                                >
                                     <i className="fas fa-sign-out-alt"></i>
-                                    <span>Exit Guestlist</span>
+                                    <span>Exit Guestlist {isEventClosed(event) && '(Closed)'}</span>
                                 </button>
                             </div>
                         </div>

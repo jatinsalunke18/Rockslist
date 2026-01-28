@@ -3,7 +3,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { db } from '../lib/firebase';
 import { doc, getDoc, collection, addDoc, updateDoc, increment, serverTimestamp, setDoc, query, where, getDocs } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
-import { validateGuestIdentity, findDuplicateGuest, checkEventLevelDuplicate, normalizePhone, normalizeEmail } from '../lib/validation';
+import { validateGuestIdentity, findDuplicateGuest, checkEventLevelDuplicate, normalizePhone, normalizeEmail, isEventClosed } from '../lib/validation';
 import { createRSVP, notifyRSVPEdit, notifyHostNewGuest } from '../lib/rsvpHelper';
 
 export default function Rsvp() {
@@ -195,6 +195,12 @@ export default function Rsvp() {
     const handleSubmit = async () => {
         if (mode === 'create' && !termsAccepted) return;
 
+        // Check if event is closed
+        if (isEventClosed(event)) {
+            alert(`Sorry, this guestlist closed at ${event.closeTime}. No further entries or edits are allowed.`);
+            return;
+        }
+
         const errors = {};
 
         for (let i = 0; i < guests.length; i++) {
@@ -322,6 +328,30 @@ export default function Rsvp() {
     if (loading) return <div className="screen center-msg">Loading...</div>;
     if (!event) return <div className="screen center-msg">Event not found</div>;
 
+    // Show a dedicated closed screen for non-viewing modes
+    if (isEventClosed(event) && mode !== 'view') {
+        return (
+            <section className="screen active">
+                <header className="home-header">
+                    <div className="header-left">
+                        <button className="icon-btn-plain" onClick={() => navigate(-1)}><i className="fas fa-arrow-left"></i></button>
+                    </div>
+                </header>
+                <div className="screen-content padding-x center-msg" style={{ textAlign: 'center' }}>
+                    <i className="fas fa-clock" style={{ fontSize: 48, color: 'var(--error)', marginBottom: 20, opacity: 0.5 }}></i>
+                    <h2 style={{ fontSize: 22, fontWeight: 800, marginBottom: 12 }}>Guestlist Closed</h2>
+                    <p style={{ color: 'var(--text-muted)', marginBottom: 32 }}>
+                        Sorry, the guestlist for <strong>{event.eventName || event.name}</strong> closed at {event.closeTime}.
+                        No further entries or edits are allowed.
+                    </p>
+                    <button className="primary-btn" onClick={() => navigate(`/event/${id}`)}>
+                        Back to Event
+                    </button>
+                </div>
+            </section>
+        );
+    }
+
     if (isSuccess) {
         return (
             <div className="screen active">
@@ -368,6 +398,12 @@ export default function Rsvp() {
                 <div className="event-mini-header" style={{ marginBottom: 20 }}>
                     <h3>{event.eventName || event.name}</h3>
                     <p style={{ color: 'var(--text-muted)' }}>{event.date} • {event.location}</p>
+                    {isEventClosed(event) && (
+                        <div style={{ marginTop: 12, padding: '8px 12px', background: 'rgba(255, 59, 48, 0.1)', color: 'var(--error)', borderRadius: 6, fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <i className="fas fa-clock"></i>
+                            <span>Guestlist Closed ({event.closeTime})</span>
+                        </div>
+                    )}
                 </div>
 
                 <div id="guestsListContainer">
@@ -463,9 +499,9 @@ export default function Rsvp() {
                     <button
                         onClick={handleSubmit}
                         className="primary-btn full-width-btn"
-                        disabled={(mode === 'create' && !termsAccepted) || submitting || Object.keys(guestErrors).length > 0}
+                        disabled={(mode === 'create' && !termsAccepted) || submitting || Object.keys(guestErrors).length > 0 || isEventClosed(event)}
                     >
-                        {submitting ? 'Saving...' : mode === 'edit' ? 'Save Changes' : 'Confirm RSVP'}
+                        {isEventClosed(event) ? 'Guestlist Closed' : submitting ? 'Saving...' : mode === 'edit' ? 'Save Changes' : 'Confirm RSVP'}
                     </button>
                 )}
             </div>
