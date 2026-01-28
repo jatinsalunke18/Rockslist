@@ -8,22 +8,22 @@ export default function Home() {
     const { user } = useAuth();
     const navigate = useNavigate();
     const [events, setEvents] = useState([]);
+    const [allFetchedEvents, setAllFetchedEvents] = useState([]);
     const [loading, setLoading] = useState(true);
     const [selectedCity, setSelectedCity] = useState(localStorage.getItem('preferredCity') || 'All Cities');
     const [showCityPicker, setShowCityPicker] = useState(false);
 
-    const cities = ['All Cities', 'Mumbai', 'Pune', 'Bangalore', 'Delhi', 'Goa', 'Hyderabad'];
+    // Dynamic cities derived from data
+    const [availableCities, setAvailableCities] = useState(['All Cities']);
 
     useEffect(() => {
         const fetchEvents = async () => {
             setLoading(true);
             try {
-                // Fetch all recent events and filter in JS for total reliability
-                // This avoids "Missing Index" errors and works instantly
                 const q = query(
                     collection(db, "lists"),
                     orderBy("date", "asc"),
-                    limit(150)
+                    limit(200)
                 );
 
                 const querySnapshot = await getDocs(q);
@@ -32,28 +32,53 @@ export default function Home() {
                     ...doc.data()
                 }));
 
-                // Apply filtering
-                if (selectedCity === 'All Cities') {
-                    setEvents(eventsList);
-                } else {
-                    setEvents(eventsList.filter(e =>
-                        e.city?.trim().toLowerCase() === selectedCity.toLowerCase()
-                    ));
-                }
+                setAllFetchedEvents(eventsList);
+
+                // Extract unique cities from data
+                const uniqueCitiesSet = new Set(['All Cities']);
+                eventsList.forEach(e => {
+                    if (e.city) uniqueCitiesSet.add(e.city.trim());
+                });
+
+                const sortedCities = Array.from(uniqueCitiesSet).sort((a, b) => {
+                    if (a === 'All Cities') return -1;
+                    if (b === 'All Cities') return 1;
+                    return a.localeCompare(b);
+                });
+
+                setAvailableCities(sortedCities);
+                filterAndSetEvents(eventsList, selectedCity);
+
             } catch (err) {
                 console.error("Error fetching events:", err);
-                // Last resort fallback if orderby fails
                 const snap = await getDocs(query(collection(db, "lists"), limit(100)));
                 const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-                setEvents(selectedCity === 'All Cities' ? all : all.filter(e => e.city === selectedCity));
+                setAllFetchedEvents(all);
+                filterAndSetEvents(all, selectedCity);
             } finally {
                 setLoading(false);
             }
         };
 
         fetchEvents();
+    }, []);
+
+    // Effect for filtering when city changes
+    useEffect(() => {
+        filterAndSetEvents(allFetchedEvents, selectedCity);
         localStorage.setItem('preferredCity', selectedCity);
-    }, [selectedCity]);
+    }, [selectedCity, allFetchedEvents]);
+
+    const filterAndSetEvents = (all, city) => {
+        if (!all || all.length === 0) return;
+        if (city === 'All Cities' || !city) {
+            setEvents(all);
+        } else {
+            setEvents(all.filter(e =>
+                e.city?.trim().toLowerCase() === city.toLowerCase()
+            ));
+        }
+    };
 
     const handleCitySelect = (city) => {
         setSelectedCity(city);
@@ -178,7 +203,7 @@ export default function Home() {
                         <div className="action-sheet-content">
                             <h3 style={{ marginBottom: 20, fontSize: 18, fontWeight: 700 }}>Select City</h3>
                             <div className="city-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
-                                {cities.map(city => (
+                                {availableCities.map(city => (
                                     <button
                                         key={city}
                                         className={`city-select-btn ${selectedCity === city ? 'active' : ''}`}
