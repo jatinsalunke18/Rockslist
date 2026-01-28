@@ -2,10 +2,9 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { db } from '../lib/firebase';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, increment, getDoc, serverTimestamp, getDocs, setDoc } from 'firebase/firestore';
-import { useAuth } from '../contexts/AuthContext';
 import { createRSVP } from '../lib/rsvpHelper';
 import { jsPDF } from 'jspdf';
-import 'jspdf-autotable';
+import autoTable from 'jspdf-autotable';
 
 export default function ViewGuests() {
     const { id } = useParams(); // eventId
@@ -242,55 +241,65 @@ export default function ViewGuests() {
     };
 
     const handleDownloadPDF = () => {
-        const doc = new jsPDF();
-        const eventName = event?.eventName || event?.name || 'Event';
+        console.log("📥 Download PDF initiated...");
+        try {
+            const doc = new jsPDF();
+            const eventName = event?.eventName || event?.name || 'Event';
 
-        // Add Title
-        doc.setFontSize(20);
-        doc.setTextColor(33, 33, 33);
-        doc.text(`Guest List: ${eventName}`, 14, 22);
+            console.log("📝 Generating table for event:", eventName);
 
-        // Add Meta Info
-        doc.setFontSize(11);
-        doc.setTextColor(100, 100, 100);
-        doc.text(`Date: ${event?.date || 'N/A'} | Venue: ${event?.location || 'N/A'}`, 14, 30);
-        doc.text(`Total Guests: ${stats.total} (M: ${stats.male}, F: ${stats.female}, O: ${stats.other})`, 14, 38);
-        doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 46);
+            // Add Title
+            doc.setFontSize(20);
+            doc.setTextColor(33, 33, 33);
+            doc.text(`Guest List: ${eventName}`, 14, 22);
 
-        // Define table columns
-        const tableColumn = ["#", "Name", "Phone Number", "Email Address", "Gender", "Status"];
+            // Add Meta Info
+            doc.setFontSize(11);
+            doc.setTextColor(100, 100, 100);
+            doc.text(`Date: ${event?.date || 'N/A'} | Venue: ${event?.location || 'N/A'}`, 14, 30);
+            doc.text(`Total Guests: ${stats.total} (M: ${stats.male}, F: ${stats.female}, O: ${stats.other})`, 14, 38);
+            doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 46);
 
-        // Define table rows
-        const tableRows = filteredGuests.map((guest, index) => [
-            index + 1,
-            guest.name,
-            guest.phone || 'N/A',
-            guest.email || 'N/A',
-            guest.gender ? guest.gender.charAt(0).toUpperCase() + guest.gender.slice(1) : 'N/A',
-            guest.arrived ? 'Arrived' : 'Pending'
-        ]);
+            // Define table columns
+            const tableColumn = ["#", "Name", "Phone Number", "Email Address", "Gender", "Status"];
 
-        // Generate table
-        doc.autoTable({
-            head: [tableColumn],
-            body: tableRows,
-            startY: 55,
-            theme: 'grid',
-            headStyles: { fillColor: [99, 102, 241], textColor: [255, 255, 255], fontStyle: 'bold' },
-            styles: { fontSize: 9, cellPadding: 3 },
-            alternateRowStyles: { fillColor: [250, 250, 250] },
-            columnStyles: {
-                0: { cellWidth: 10 },
-                1: { cellWidth: 'auto' },
-                2: { cellWidth: 35 },
-                3: { cellWidth: 50 },
-                4: { cellWidth: 20 },
-                5: { cellWidth: 25 }
-            }
-        });
+            // Define table rows
+            const tableRows = filteredGuests.map((guest, index) => [
+                index + 1,
+                guest.name,
+                guest.phone || 'N/A',
+                guest.email || 'N/A',
+                guest.gender ? guest.gender.charAt(0).toUpperCase() + guest.gender.slice(1) : 'N/A',
+                guest.arrived ? 'Arrived' : 'Pending'
+            ]);
 
-        // Save PDF
-        doc.save(`GuestList_${eventName.replace(/\s+/g, '_')}.pdf`);
+            // Generate table
+            autoTable(doc, {
+                head: [tableColumn],
+                body: tableRows,
+                startY: 55,
+                theme: 'grid',
+                headStyles: { fillColor: [99, 102, 241], textColor: [255, 255, 255], fontStyle: 'bold' },
+                styles: { fontSize: 9, cellPadding: 3 },
+                alternateRowStyles: { fillColor: [250, 250, 250] },
+                columnStyles: {
+                    0: { cellWidth: 10 },
+                    1: { cellWidth: 'auto' },
+                    2: { cellWidth: 35 },
+                    3: { cellWidth: 50 },
+                    4: { cellWidth: 20 },
+                    5: { cellWidth: 25 }
+                }
+            });
+
+            console.log("💾 Saving PDF...");
+            // Save PDF
+            doc.save(`GuestList_${eventName.replace(/\s+/g, '_')}.pdf`);
+            console.log("✅ PDF Saved successfully.");
+        } catch (error) {
+            console.error("❌ PDF Generation Error:", error);
+            alert("Failed to generate PDF. Check console for details.");
+        }
     };
 
     const filteredGuests = guests.filter(g =>
