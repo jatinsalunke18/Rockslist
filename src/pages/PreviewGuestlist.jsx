@@ -126,7 +126,8 @@ export default function PreviewGuestlist() {
                             date: eventData.date || restFormData.date,
                             time: eventData.time || restFormData.time,
                             location: eventData.location || restFormData.location,
-                            city: eventData.city || restFormData.city
+                            city: eventData.city || restFormData.city,
+                            state: eventData.state || restFormData.state
                         },
                         addedBy: 'organizer'
                     });
@@ -183,7 +184,7 @@ export default function PreviewGuestlist() {
 
                     <div className="event-meta-row">
                         <i className="fas fa-map-marker-alt"></i>
-                        <span>{formData.location}</span>
+                        <span>{formData.location}, {formData.city}, {formData.state}</span>
                     </div>
                     <div className="event-meta-row">
                         <i className="fas fa-calendar-alt"></i>

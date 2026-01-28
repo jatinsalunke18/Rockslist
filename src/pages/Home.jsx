@@ -10,11 +10,26 @@ export default function Home() {
     const [events, setEvents] = useState([]);
     const [allFetchedEvents, setAllFetchedEvents] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [selectedState, setSelectedState] = useState(localStorage.getItem('preferredState') || 'All Regions');
     const [selectedCity, setSelectedCity] = useState(localStorage.getItem('preferredCity') || 'All Cities');
-    const [showCityPicker, setShowCityPicker] = useState(false);
+    const [showLocationPicker, setShowLocationPicker] = useState(false);
+    const [pickerStep, setPickerStep] = useState('state'); // 'state' or 'city'
+    const [locationSearch, setLocationSearch] = useState('');
 
-    // Dynamic cities derived from data
-    const [availableCities, setAvailableCities] = useState(['All Cities']);
+    // Dynamic hierarchy derived from data
+    const [locationHierarchy, setLocationHierarchy] = useState({ 'All Regions': ['All Cities'] });
+
+    const cityToStateMap = {
+        'Mumbai': 'Maharashtra', 'Pune': 'Maharashtra', 'Nagpur': 'Maharashtra', 'Nashik': 'Maharashtra',
+        'Bangalore': 'Karnataka', 'Bengaluru': 'Karnataka', 'Mangalore': 'Karnataka',
+        'Delhi': 'Delhi NCR', 'New Delhi': 'Delhi NCR', 'Noida': 'Delhi NCR', 'Gurgaon': 'Delhi NCR', 'Gurugram': 'Delhi NCR',
+        'Hyderabad': 'Telangana',
+        'Goa': 'Goa', 'North Goa': 'Goa', 'South Goa': 'Goa',
+        'Chennai': 'Tamil Nadu',
+        'Kolkata': 'West Bengal',
+        'Ahmedabad': 'Gujarat', 'Surat': 'Gujarat',
+        'Jaipur': 'Rajasthan', 'Udaipur': 'Rajasthan'
+    };
 
     useEffect(() => {
         const fetchEvents = async () => {
@@ -34,27 +49,44 @@ export default function Home() {
 
                 setAllFetchedEvents(eventsList);
 
-                // Extract unique cities from data
-                const uniqueCitiesSet = new Set(['All Cities']);
+                // Build hierarchy from data
+                const hierarchy = { 'All Regions': ['All Cities'] };
+
                 eventsList.forEach(e => {
-                    if (e.city) uniqueCitiesSet.add(e.city.trim());
+                    const city = e.city?.trim();
+                    if (!city) return;
+
+                    const state = e.state?.trim() || cityToStateMap[city] || 'Other';
+
+                    if (!hierarchy[state]) hierarchy[state] = ['All Cities'];
+                    if (!hierarchy[state].includes(city)) hierarchy[state].push(city);
+
+                    // Add to All Regions
+                    if (!hierarchy['All Regions'].includes(city)) hierarchy['All Regions'].push(city);
                 });
 
-                const sortedCities = Array.from(uniqueCitiesSet).sort((a, b) => {
-                    if (a === 'All Cities') return -1;
-                    if (b === 'All Cities') return 1;
+                // Sort hierarchy
+                const sortedHierarchy = {};
+                Object.keys(hierarchy).sort((a, b) => {
+                    if (a === 'All Regions') return -1;
+                    if (b === 'All Regions') return 1;
                     return a.localeCompare(b);
+                }).forEach(state => {
+                    sortedHierarchy[state] = hierarchy[state].sort((a, b) => {
+                        if (a === 'All Cities') return -1;
+                        return a.localeCompare(b);
+                    });
                 });
 
-                setAvailableCities(sortedCities);
-                filterAndSetEvents(eventsList, selectedCity);
+                setLocationHierarchy(sortedHierarchy);
+                filterAndSetEvents(eventsList, selectedState, selectedCity);
 
             } catch (err) {
                 console.error("Error fetching events:", err);
                 const snap = await getDocs(query(collection(db, "lists"), limit(100)));
                 const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
                 setAllFetchedEvents(all);
-                filterAndSetEvents(all, selectedCity);
+                filterAndSetEvents(all, selectedState, selectedCity);
             } finally {
                 setLoading(false);
             }
@@ -63,26 +95,47 @@ export default function Home() {
         fetchEvents();
     }, []);
 
-    // Effect for filtering when city changes
+    // Effect for filtering when location changes
     useEffect(() => {
-        filterAndSetEvents(allFetchedEvents, selectedCity);
+        filterAndSetEvents(allFetchedEvents, selectedState, selectedCity);
+        localStorage.setItem('preferredState', selectedState);
         localStorage.setItem('preferredCity', selectedCity);
-    }, [selectedCity, allFetchedEvents]);
+    }, [selectedState, selectedCity, allFetchedEvents]);
 
-    const filterAndSetEvents = (all, city) => {
+    const filterAndSetEvents = (all, state, city) => {
         if (!all || all.length === 0) return;
-        if (city === 'All Cities' || !city) {
-            setEvents(all);
+
+        let filtered = all;
+
+        // Filter by state if not All Regions
+        if (state !== 'All Regions') {
+            filtered = filtered.filter(e => {
+                const eState = e.state?.trim() || cityToStateMap[e.city?.trim()] || 'Other';
+                return eState === state;
+            });
+        }
+
+        // Filter by city if not All Cities
+        if (city !== 'All Cities') {
+            filtered = filtered.filter(e => e.city?.trim().toLowerCase() === city.toLowerCase());
+        }
+
+        setEvents(filtered);
+    };
+
+    const handleStateSelect = (state) => {
+        setSelectedState(state);
+        if (state === 'All Regions') {
+            setSelectedCity('All Cities');
+            setShowLocationPicker(false);
         } else {
-            setEvents(all.filter(e =>
-                e.city?.trim().toLowerCase() === city.toLowerCase()
-            ));
+            setPickerStep('city');
         }
     };
 
     const handleCitySelect = (city) => {
         setSelectedCity(city);
-        setShowCityPicker(false);
+        setShowLocationPicker(false);
     };
 
     const formatDate = (dateString) => {
@@ -119,8 +172,8 @@ export default function Home() {
                     <span className="logo-text-medium">Rocks Guestlist</span>
                 </div>
                 <div className="header-center">
-                    <div className="location-pill" onClick={() => setShowCityPicker(true)}>
-                        <span>{selectedCity}</span>
+                    <div className="location-pill" onClick={() => { setPickerStep('state'); setShowLocationPicker(true); }}>
+                        <span>{selectedCity === 'All Cities' ? selectedState : selectedCity}</span>
                         <i className="fas fa-chevron-down"></i>
                     </div>
                 </div>
@@ -134,7 +187,7 @@ export default function Home() {
             <div className="screen-content">
                 <div className="greeting-card glass-card">
                     <h2>hey <span>{user?.displayName || user?.phoneNumber || 'User'}</span>,</h2>
-                    <p>you can go for <span className="highlight-count">{events.length}</span> parties today for free in <span>{selectedCity}</span></p>
+                    <p>you can go for <span className="highlight-count">{events.length}</span> parties today for free in <span>{selectedCity === 'All Cities' ? selectedState : selectedCity}</span></p>
                 </div>
 
                 <div className="section-header" style={{ marginBottom: 16 }}>
@@ -167,7 +220,7 @@ export default function Home() {
                                         <h3 className="event-card-title">{event.name || event.eventName || 'Unnamed Event'}</h3>
                                         <div className="event-card-location">
                                             <i className="fas fa-map-marker-alt"></i>
-                                            <span>{event.location}</span>
+                                            <span>{event.location}{event.city ? `, ${event.city}` : ''}{event.state ? `, ${event.state}` : ''}</span>
                                             {status && (
                                                 <>
                                                     <span className="event-meta-separator">·</span>
@@ -194,33 +247,82 @@ export default function Home() {
                 <i className="fas fa-plus"></i>
             </button>
 
-            {/* City Picker Action Sheet */}
-            {showCityPicker && (
+            {/* Location Picker Action Sheet */}
+            {showLocationPicker && (
                 <>
-                    <div className="action-sheet-overlay" onClick={() => setShowCityPicker(false)}></div>
+                    <div className="action-sheet-overlay" onClick={() => setShowLocationPicker(false)}></div>
                     <div className="action-sheet">
                         <div className="action-sheet-handle"></div>
                         <div className="action-sheet-content">
-                            <h3 style={{ marginBottom: 20, fontSize: 18, fontWeight: 700 }}>Select City</h3>
-                            <div className="city-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
-                                {availableCities.map(city => (
-                                    <button
-                                        key={city}
-                                        className={`city-select-btn ${selectedCity === city ? 'active' : ''}`}
-                                        onClick={() => handleCitySelect(city)}
-                                        style={{
-                                            padding: '16px',
-                                            borderRadius: 12,
-                                            border: `1px solid ${selectedCity === city ? 'var(--primary)' : 'var(--border)'}`,
-                                            background: selectedCity === city ? 'rgba(99, 102, 241, 0.1)' : 'var(--surface)',
-                                            color: selectedCity === city ? 'var(--primary)' : 'var(--text-main)',
-                                            fontWeight: 600,
-                                            textAlign: 'center'
-                                        }}
-                                    >
-                                        {city}
+                            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 20, gap: 12 }}>
+                                {pickerStep === 'city' && (
+                                    <button className="icon-btn-plain" onClick={() => setPickerStep('state')} style={{ padding: 0 }}>
+                                        <i className="fas fa-arrow-left"></i>
                                     </button>
-                                ))}
+                                )}
+                                <h3 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>
+                                    {pickerStep === 'state' ? 'Select Region' : `Select City in ${selectedState}`}
+                                </h3>
+                            </div>
+
+                            <div className="search-bar glass-card" style={{ marginBottom: 20, padding: '10px 16px', borderRadius: 12, background: 'var(--surface-light)', border: '1px solid var(--border)' }}>
+                                <i className="fas fa-search" style={{ color: 'var(--text-muted)', marginRight: 10 }}></i>
+                                <input
+                                    type="text"
+                                    placeholder={pickerStep === 'state' ? "Search state..." : "Search city..."}
+                                    value={locationSearch}
+                                    onChange={(e) => setLocationSearch(e.target.value)}
+                                    style={{ background: 'transparent', border: 'none', color: 'var(--text-main)', width: '100%', outline: 'none', fontSize: 14 }}
+                                />
+                            </div>
+
+                            <div className="location-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 24, maxHeight: '60vh', overflowY: 'auto', padding: '4px' }}>
+                                {pickerStep === 'state' ? (
+                                    Object.keys(locationHierarchy)
+                                        .filter(s => s.toLowerCase().includes(locationSearch.toLowerCase()))
+                                        .map(state => (
+                                            <button
+                                                key={state}
+                                                className={`location-select-btn ${selectedState === state ? 'active' : ''}`}
+                                                onClick={() => { handleStateSelect(state); setLocationSearch(''); }}
+                                                style={{
+                                                    padding: '16px 12px',
+                                                    borderRadius: 12,
+                                                    border: `1.5px solid ${selectedState === state ? 'var(--primary)' : 'var(--border)'}`,
+                                                    background: selectedState === state ? 'rgba(99, 102, 241, 0.08)' : 'var(--surface)',
+                                                    color: selectedState === state ? 'var(--primary)' : 'var(--text-main)',
+                                                    fontWeight: 600,
+                                                    fontSize: '14px',
+                                                    textAlign: 'center',
+                                                    transition: 'all 0.2s ease'
+                                                }}
+                                            >
+                                                {state}
+                                            </button>
+                                        ))
+                                ) : (
+                                    locationHierarchy[selectedState]?.filter(c => c.toLowerCase().includes(locationSearch.toLowerCase()))
+                                        .map(city => (
+                                            <button
+                                                key={city}
+                                                className={`location-select-btn ${selectedCity === city ? 'active' : ''}`}
+                                                onClick={() => { handleCitySelect(city); setLocationSearch(''); }}
+                                                style={{
+                                                    padding: '16px 12px',
+                                                    borderRadius: 12,
+                                                    border: `1.5px solid ${selectedCity === city ? 'var(--primary)' : 'var(--border)'}`,
+                                                    background: selectedCity === city ? 'rgba(99, 102, 241, 0.08)' : 'var(--surface)',
+                                                    color: selectedCity === city ? 'var(--primary)' : 'var(--text-main)',
+                                                    fontWeight: 600,
+                                                    fontSize: '14px',
+                                                    textAlign: 'center',
+                                                    transition: 'all 0.2s ease'
+                                                }}
+                                            >
+                                                {city}
+                                            </button>
+                                        ))
+                                )}
                             </div>
                         </div>
                     </div>

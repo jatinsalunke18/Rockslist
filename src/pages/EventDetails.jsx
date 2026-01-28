@@ -251,7 +251,7 @@ export default function EventDetails() {
 
                     <div className="event-meta-row">
                         <i className="fas fa-map-marker-alt"></i>
-                        <span>{event.location}</span>
+                        <span>{event.location}{event.city ? `, ${event.city}` : ''}{event.state ? `, ${event.state}` : ''}</span>
                     </div>
                     <div className="event-meta-row">
                         <i className="fas fa-calendar-alt"></i>
