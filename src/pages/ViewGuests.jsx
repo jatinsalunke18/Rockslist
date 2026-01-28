@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { db } from '../lib/firebase';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, increment, getDoc, serverTimestamp, getDocs, setDoc } from 'firebase/firestore';
+import { useAuth } from '../contexts/AuthContext';
 import { createRSVP } from '../lib/rsvpHelper';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
