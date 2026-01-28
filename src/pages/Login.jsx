@@ -3,8 +3,12 @@ import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 
 export default function Login() {
-    const { loginWithGoogle, setupRecaptcha, clearRecaptcha, loginWithPhone } = useAuth();
+    const { loginWithGoogle, setupRecaptcha, clearRecaptcha, loginWithPhone, loginWithEmail, registerWithEmail } = useAuth();
+    const [authMethod, setAuthMethod] = useState('phone'); // 'phone' or 'email'
+    const [isSignup, setIsSignup] = useState(false);
     const [phoneNumber, setPhoneNumber] = useState('');
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
     const [otp, setOtp] = useState('');
     const [showOtp, setShowOtp] = useState(false);
     const [confirmationResult, setConfirmationResult] = useState(null);
@@ -12,9 +16,11 @@ export default function Login() {
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
-        setupRecaptcha('recaptcha-container');
+        if (authMethod === 'phone') {
+            setupRecaptcha('recaptcha-container');
+        }
         return () => clearRecaptcha();
-    }, []);
+    }, [authMethod]);
 
     const handleSendOtp = async (e) => {
         e.preventDefault();
@@ -22,16 +28,34 @@ export default function Login() {
         setLoading(true);
         try {
             const formattedPhone = `+91${phoneNumber}`;
-            console.log('Attempting login with:', formattedPhone);
             const result = await loginWithPhone(formattedPhone);
             setConfirmationResult(result);
             setShowOtp(true);
         } catch (err) {
             console.error('Phone Auth Error:', err);
-            if (err.code === 'auth/operation-not-allowed') {
-                setError('Phone authentication is not enabled in Firebase Console.');
-            } else if (err.code === 'auth/invalid-phone-number') {
-                setError('Invalid phone number format.');
+            setError(err.message);
+        }
+        setLoading(false);
+    };
+
+    const handleEmailAuth = async (e) => {
+        e.preventDefault();
+        setError('');
+        setLoading(true);
+        try {
+            if (isSignup) {
+                await registerWithEmail(email, password);
+            } else {
+                await loginWithEmail(email, password);
+            }
+        } catch (err) {
+            console.error('Email Auth Error:', err);
+            if (err.code === 'auth/user-not-found') {
+                setError('No account found with this email. Please sign up.');
+            } else if (err.code === 'auth/wrong-password') {
+                setError('Incorrect password.');
+            } else if (err.code === 'auth/email-already-in-use') {
+                setError('This email is already registered. Please login.');
             } else {
                 setError(err.message);
             }
@@ -44,7 +68,6 @@ export default function Login() {
         setLoading(true);
         try {
             await confirmationResult.confirm(otp);
-            // Auth state changes, App redirects
         } catch (err) {
             setError('Invalid OTP');
         }
@@ -65,48 +88,110 @@ export default function Login() {
                 <div className="logo-text-large">Rockslist</div>
                 <p className="auth-subtitle">Sign in to continue</p>
 
-                <form className="auth-form" onSubmit={handleSendOtp}>
-                    {!showOtp ? (
-                        <>
-                            <div className="phone-input-group">
-                                <span className="country-code">+91</span>
+                <div className="auth-tabs" style={{ display: 'flex', gap: 10, marginBottom: 20, background: 'var(--surface-light)', padding: 4, borderRadius: 12 }}>
+                    <button
+                        className={`tab-btn ${authMethod === 'phone' ? 'active' : ''}`}
+                        onClick={() => { setAuthMethod('phone'); setShowOtp(false); setError(''); }}
+                        style={{ flex: 1, padding: '10px', borderRadius: 10, border: 'none', background: authMethod === 'phone' ? 'var(--primary)' : 'transparent', color: authMethod === 'phone' ? 'white' : 'var(--text-muted)', fontWeight: 600, fontSize: 13, transition: 'all 0.2s' }}
+                    >
+                        Phone
+                    </button>
+                    <button
+                        className={`tab-btn ${authMethod === 'email' ? 'active' : ''}`}
+                        onClick={() => { setAuthMethod('email'); setError(''); }}
+                        style={{ flex: 1, padding: '10px', borderRadius: 10, border: 'none', background: authMethod === 'email' ? 'var(--primary)' : 'transparent', color: authMethod === 'email' ? 'white' : 'var(--text-muted)', fontWeight: 600, fontSize: 13, transition: 'all 0.2s' }}
+                    >
+                        Email
+                    </button>
+                </div>
+
+                {authMethod === 'phone' ? (
+                    <form className="auth-form" onSubmit={handleSendOtp}>
+                        {!showOtp ? (
+                            <>
+                                <div className="phone-input-group">
+                                    <span className="country-code">+91</span>
+                                    <input
+                                        type="tel"
+                                        placeholder="Phone Number"
+                                        required
+                                        pattern="[0-9]{10}"
+                                        maxLength="10"
+                                        value={phoneNumber}
+                                        onChange={(e) => setPhoneNumber(e.target.value)}
+                                    />
+                                </div>
+                                <div id="recaptcha-container"></div>
+                                <button type="submit" className="primary-btn" disabled={loading}>
+                                    {loading ? 'Sending...' : 'Continue'}
+                                </button>
+                            </>
+                        ) : (
+                            <div className="otp-container" style={{ marginTop: 16 }}>
                                 <input
-                                    type="tel"
-                                    placeholder="Phone Number"
-                                    required
-                                    pattern="[0-9]{10}"
-                                    maxLength="10"
-                                    value={phoneNumber}
-                                    onChange={(e) => setPhoneNumber(e.target.value)}
+                                    type="text"
+                                    placeholder="Enter OTP"
+                                    maxLength="6"
+                                    style={{ textAlign: 'center', letterSpacing: '4px', fontWeight: 700 }}
+                                    value={otp}
+                                    onChange={(e) => setOtp(e.target.value)}
                                 />
+                                <button
+                                    type="button"
+                                    className="primary-btn"
+                                    style={{ marginTop: 12 }}
+                                    onClick={handleVerifyOtp}
+                                    disabled={loading}
+                                >
+                                    {loading ? 'Verifying...' : 'Verify OTP'}
+                                </button>
+                                <button
+                                    type="button"
+                                    className="secondary-btn"
+                                    style={{ width: '100%', marginTop: 8, background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: 12 }}
+                                    onClick={() => setShowOtp(false)}
+                                >
+                                    Change Number
+                                </button>
                             </div>
-                            <div id="recaptcha-container"></div>
-                            <button type="submit" className="primary-btn" disabled={loading}>
-                                {loading ? 'Sending...' : 'Continue'}
-                            </button>
-                        </>
-                    ) : (
-                        <div className="otp-container" style={{ marginTop: 16 }}>
+                        )}
+                    </form>
+                ) : (
+                    <form className="auth-form" onSubmit={handleEmailAuth}>
+                        <div className="form-group" style={{ marginBottom: 12 }}>
                             <input
-                                type="text"
-                                placeholder="Enter OTP"
-                                maxLength="6"
-                                style={{ textAlign: 'center', letterSpacing: '4px', fontWeight: 700 }}
-                                value={otp}
-                                onChange={(e) => setOtp(e.target.value)}
+                                type="email"
+                                placeholder="Email Address"
+                                required
+                                value={email}
+                                onChange={(e) => setEmail(e.target.value)}
+                                style={{ width: '100%', padding: '14px', borderRadius: 12, border: '1.5px solid var(--border)', background: 'var(--surface)', color: 'var(--text-main)', fontSize: 14 }}
                             />
-                            <button
-                                type="button"
-                                className="primary-btn"
-                                style={{ marginTop: 12 }}
-                                onClick={handleVerifyOtp}
-                                disabled={loading}
-                            >
-                                {loading ? 'Verifying...' : 'Verify OTP'}
-                            </button>
                         </div>
-                    )}
-                </form>
+                        <div className="form-group" style={{ marginBottom: 16 }}>
+                            <input
+                                type="password"
+                                placeholder="Password"
+                                required
+                                minLength="6"
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                style={{ width: '100%', padding: '14px', borderRadius: 12, border: '1.5px solid var(--border)', background: 'var(--surface)', color: 'var(--text-main)', fontSize: 14 }}
+                            />
+                        </div>
+                        <button type="submit" className="primary-btn" disabled={loading}>
+                            {loading ? (isSignup ? 'Creating Account...' : 'Logging in...') : (isSignup ? 'Sign Up' : 'Login')}
+                        </button>
+                        <button
+                            type="button"
+                            className="secondary-btn"
+                            style={{ width: '100%', marginTop: 12, background: 'none', border: 'none', color: 'var(--primary)', fontWeight: 600, fontSize: 13 }}
+                            onClick={() => setIsSignup(!isSignup)}
+                        >
+                            {isSignup ? 'Already have an account? Login' : "Don't have an account? Sign Up"}
+                        </button>
+                    </form>
+                )}
 
                 <div className="divider">or</div>
 

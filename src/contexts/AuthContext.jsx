@@ -5,7 +5,10 @@ import {
     GoogleAuthProvider,
     signOut,
     RecaptchaVerifier,
-    signInWithPhoneNumber
+    signInWithPhoneNumber,
+    createUserWithEmailAndPassword,
+    signInWithEmailAndPassword,
+    sendPasswordResetEmail
 } from "firebase/auth";
 import { auth, db } from "../lib/firebase";
 import { collection, query, where, getDocs, writeBatch, doc, onSnapshot, getDoc, setDoc } from "firebase/firestore";
@@ -139,6 +142,18 @@ export function AuthProvider({ children }) {
         return signInWithPhoneNumber(auth, phoneNumber, appVerifier);
     };
 
+    const registerWithEmail = (email, password) => {
+        return createUserWithEmailAndPassword(auth, email, password);
+    };
+
+    const loginWithEmail = (email, password) => {
+        return signInWithEmailAndPassword(auth, email, password);
+    };
+
+    const resetPassword = (email) => {
+        return sendPasswordResetEmail(auth, email);
+    };
+
     const updateProfile = async (data) => {
         if (!user) return;
         const userRef = doc(db, "users", user.uid);
@@ -154,6 +169,9 @@ export function AuthProvider({ children }) {
         setupRecaptcha,
         clearRecaptcha,
         loginWithPhone,
+        registerWithEmail,
+        loginWithEmail,
+        resetPassword,
         updateProfile
     };
 
