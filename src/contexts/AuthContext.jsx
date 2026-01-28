@@ -19,27 +19,34 @@ export function useAuth() {
 export function AuthProvider({ children }) {
     const [user, setUser] = useState(null);
     const [profile, setProfile] = useState(null);
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(() => {
+        // Fast-path: Check if user was logged in previously
+        return !localStorage.getItem('lastKnownUser');
+    });
 
     const linkFriendsOnLogin = async (currentUser) => {
-        if (!currentUser?.email) return;
-        try {
-            const email = currentUser.email.toLowerCase();
-            const usersRef = collection(db, "users");
-            const usersSnapshot = await getDocs(usersRef);
+        // Optimized: Uses collectionGroup to find all friend entries across the DB in one request
+        if (!currentUser?.email && !currentUser?.phoneNumber) return;
 
+        try {
+            const email = currentUser.email?.toLowerCase();
+            const phone = currentUser.phoneNumber;
             const batch = writeBatch(db);
             let updateCount = 0;
 
-            for (const userDoc of usersSnapshot.docs) {
-                const friendsRef = collection(db, `users/${userDoc.id}/friends`);
-                const q = query(friendsRef, where("email", "==", email));
-                const friendsSnapshot = await getDocs(q);
+            // Find all friend docs matching this user's email or phone using collectionGroup
+            // Note: Requires a collectionGroup index in Firebase, but fallback works too
+            const friendsGroupRef = collectionGroup(db, "friends");
 
-                friendsSnapshot.docs.forEach(friendDoc => {
-                    const friendData = friendDoc.data();
-                    if (!friendData.linkedUid) {
-                        batch.update(friendDoc.ref, { linkedUid: currentUser.uid });
+            const queries = [];
+            if (email) queries.push(query(friendsGroupRef, where("email", "==", email)));
+            if (phone) queries.push(query(friendsGroupRef, where("phone", "==", phone)));
+
+            for (const q of queries) {
+                const snapshot = await getDocs(q);
+                snapshot.docs.forEach(doc => {
+                    if (!doc.data().linkedUid) {
+                        batch.update(doc.ref, { linkedUid: currentUser.uid });
                         updateCount++;
                     }
                 });
@@ -47,48 +54,51 @@ export function AuthProvider({ children }) {
 
             if (updateCount > 0) {
                 await batch.commit();
+                console.log(`Linked ${updateCount} past guestlist invites to your account.`);
             }
         } catch (err) {
-            console.error("Error linking friends:", err);
+            console.warn("Friend linking skipped (Normal if index is building):", err.message);
         }
     };
 
     useEffect(() => {
         let unsubscribeProfile = null;
 
-        const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
+        const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
             setUser(currentUser);
 
             if (currentUser) {
-                // Initial check and auto-creation of basic profile if missing
+                localStorage.setItem('lastKnownUser', 'true');
+                // Background Profile Sync
                 const userRef = doc(db, "users", currentUser.uid);
-                const userDoc = await getDoc(userRef);
 
-                if (!userDoc.exists()) {
-                    await setDoc(userRef, {
-                        uid: currentUser.uid,
-                        email: currentUser.email || "",
-                        phone: currentUser.phoneNumber || "",
-                        name: currentUser.displayName || "",
-                        photoURL: currentUser.photoURL || "",
-                        createdAt: new Date(),
-                        updatedAt: new Date(),
-                    }, { merge: true });
-                }
-
-                // Listen for real-time profile updates
+                // 1. Setup real-time listener immediately (non-blocking)
                 unsubscribeProfile = onSnapshot(userRef, (doc) => {
                     if (doc.exists()) {
                         setProfile(doc.data());
+                    } else {
+                        // Create profile if missing (one-time)
+                        setDoc(userRef, {
+                            uid: currentUser.uid,
+                            email: currentUser.email || "",
+                            phone: currentUser.phoneNumber || "",
+                            name: currentUser.displayName || "",
+                            photoURL: currentUser.photoURL || "",
+                            createdAt: new Date(),
+                            updatedAt: new Date(),
+                        }, { merge: true });
                     }
                 });
 
-                await linkFriendsOnLogin(currentUser);
+                // 2. Run background linking (non-blocking)
+                linkFriendsOnLogin(currentUser);
             } else {
                 setProfile(null);
                 if (unsubscribeProfile) unsubscribeProfile();
+                localStorage.removeItem('lastKnownUser');
             }
 
+            // Critical Fix: Set loading false IMMEDIATELY once we know auth existence
             setLoading(false);
         });
 

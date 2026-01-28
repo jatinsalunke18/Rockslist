@@ -8,9 +8,14 @@ import { collection, query, where, getDocs, orderBy, limit } from 'firebase/fire
 export default function Home() {
     const { user } = useAuth();
     const navigate = useNavigate();
+    const [allFetchedEvents, setAllFetchedEvents] = useState(() => {
+        try {
+            const cached = localStorage.getItem('cachedEvents');
+            return cached ? JSON.parse(cached) : [];
+        } catch { return []; }
+    });
     const [events, setEvents] = useState([]);
-    const [allFetchedEvents, setAllFetchedEvents] = useState([]);
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(!allFetchedEvents || allFetchedEvents.length === 0);
     const [selectedState, setSelectedState] = useState('All Regions');
     const [selectedCity, setSelectedCity] = useState('All Cities');
     const [showLocationPicker, setShowLocationPicker] = useState(false);
@@ -36,7 +41,7 @@ export default function Home() {
 
     useEffect(() => {
         const fetchEvents = async () => {
-            setLoading(true);
+            // setLoading(true); // Removed as per instruction, loading is set based on cache presence
             try {
                 const q = query(
                     collection(db, "lists"),
@@ -51,6 +56,7 @@ export default function Home() {
                 }));
 
                 setAllFetchedEvents(eventsList);
+                localStorage.setItem('cachedEvents', JSON.stringify(eventsList));
 
                 // Build hierarchy from full Indian states data + active event data
                 const hierarchy = { 'All Regions': ['All Cities'] };
