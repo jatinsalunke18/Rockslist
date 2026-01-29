@@ -60,9 +60,9 @@ export async function sendWhatsappConfirmation({ event, guest, rsvpId }) {
                 { name: "2", value: event.name || 'Event' },
                 { name: "3", value: event.date || 'TBA' },
                 { name: "4", value: event.time || 'TBA' },
-                { name: "5", value: event.location || 'Venue' },
-                { name: "6", value: ticketSuffix }
+                { name: "5", value: event.location || 'Venue' }
             ],
+            button_url_parameter: ticketSuffix, // CRITICAL: This maps to the {{1}} in a Dynamic Button URL
             whatsappNumber: cleanPhone
         };
 
@@ -73,7 +73,7 @@ export async function sendWhatsappConfirmation({ event, guest, rsvpId }) {
             url: finalUrl,
             phone: cleanPhone,
             template: WATI_CONFIG.TEMPLATE_NAME,
-            paramsCount: payload.parameters.length
+            buttonSuffix: ticketSuffix
         });
 
         const response = await fetch(finalUrl, {
