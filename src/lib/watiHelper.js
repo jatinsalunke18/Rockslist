@@ -67,11 +67,11 @@ export async function sendWhatsappConfirmation({ event, guest, rsvpId }) {
         };
 
         // --- DIAGNOSTIC LOG ---
-        console.log(`📡 Wati Connection Check:`, {
+        console.log(`📡 Wati Request:`, {
             endpoint: `${baseUrl}/api/v1/sendTemplateMessage`,
-            tokenCheck: `${token.substring(0, 8)}...${token.substring(token.length - 8)}`,
-            tokenLength: token.length,
-            template: WATI_CONFIG.TEMPLATE_NAME
+            phone: cleanPhone,
+            template: WATI_CONFIG.TEMPLATE_NAME,
+            tokenLength: token.length
         });
 
         const response = await fetch(`${baseUrl}/api/v1/sendTemplateMessage?whatsappNumber=${cleanPhone}`, {
@@ -86,15 +86,20 @@ export async function sendWhatsappConfirmation({ event, guest, rsvpId }) {
         const responseData = await response.json().catch(() => ({}));
 
         if (!response.ok) {
-            console.error('❌ Wati API 401 Reveal:', {
+            console.error('❌ Wati API Failed:', {
                 status: response.status,
                 message: responseData.message || responseData.error || 'Check Wati Token/Quota',
-                fullResponse: JSON.stringify(responseData) // Force visibility
+                fullResponse: responseData
             });
             throw new Error(`Wati API error: ${response.status}`);
         }
 
-        console.log(`✅ WhatsApp sent successfully to ${cleanPhone}:`, responseData);
+        // Wati returns 200 OK even if delivery fails in some cases (e.g. quota)
+        if (responseData.result === false || responseData.result === 'error') {
+            console.warn('⚠️ Wati accepted request but returned a failure result:', responseData);
+        } else {
+            console.log(`✅ Wati Response:`, responseData);
+        }
 
     } catch (error) {
         console.error('WhatsApp send failed (non-blocking):', error.message);
