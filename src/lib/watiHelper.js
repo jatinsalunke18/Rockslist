@@ -66,15 +66,17 @@ export async function sendWhatsappConfirmation({ event, guest, rsvpId }) {
             whatsappNumber: cleanPhone
         };
 
+        const finalUrl = `${baseUrl}/api/v1/sendTemplateMessage?whatsappNumber=${cleanPhone}`;
+
         // --- DIAGNOSTIC LOG ---
         console.log(`📡 Wati Request:`, {
-            url: `${baseUrl}/api/v1/sendTemplateMessage`,
+            url: finalUrl,
             phone: cleanPhone,
             template: WATI_CONFIG.TEMPLATE_NAME,
             paramsCount: payload.parameters.length
         });
 
-        const response = await fetch(`${baseUrl}/api/v1/sendTemplateMessage`, {
+        const response = await fetch(finalUrl, {
             method: 'POST',
             headers: {
                 'Authorization': authHeader,
