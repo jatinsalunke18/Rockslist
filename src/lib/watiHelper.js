@@ -56,12 +56,12 @@ export async function sendWhatsappConfirmation({ event, guest, rsvpId }) {
             template_name: WATI_CONFIG.TEMPLATE_NAME,
             broadcast_name: 'RSVP Confirmation',
             parameters: [
-                { name: 'name', value: guest.name },
-                { name: 'event_name', value: event.name },
-                { name: 'event_date', value: event.date },
-                { name: 'event_time', value: event.time },
-                { name: 'event_location', value: event.location },
-                { name: 'ticket_link', value: ticketSuffix }
+                { name: "1", value: guest.name || 'Guest' },
+                { name: "2", value: event.name || 'Event' },
+                { name: "3", value: event.date || 'TBA' },
+                { name: "4", value: event.time || 'TBA' },
+                { name: "5", value: event.location || 'Venue' },
+                { name: "6", value: ticketSuffix }
             ],
             whatsappNumber: cleanPhone
         };
