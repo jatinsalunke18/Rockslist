@@ -36,9 +36,22 @@ export async function sendWhatsappConfirmation({ event, guest, rsvpId }) {
 
     try {
         const cleanPhone = guest.phone.replace(/\D/g, '');
-        const baseUrl = WATI_CONFIG.API_ENDPOINT.endsWith('/')
-            ? WATI_CONFIG.API_ENDPOINT.slice(0, -1)
-            : WATI_CONFIG.API_ENDPOINT;
+        const baseUrl = (WATI_CONFIG.API_ENDPOINT || '').trim().replace(/\/$/, '');
+
+        // Clean token: Remove quotes if any, trim whitespace
+        let rawToken = (WATI_CONFIG.ACCESS_TOKEN || '').trim();
+        if (rawToken.startsWith('"') && rawToken.endsWith('"')) {
+            rawToken = rawToken.slice(1, -1);
+        }
+
+        const authHeader = rawToken.toLowerCase().startsWith('bearer ')
+            ? rawToken
+            : `Bearer ${rawToken}`;
+
+        if (!rawToken || rawToken === 'undefined') {
+            console.error('❌ WhatsApp Error: WATI_ACCESS_TOKEN is missing or undefined.');
+            return;
+        }
 
         // Wati Dynamic Buttons work by taking the 'Base URL' in the dashboard
         // and appending this 'Suffix' (parameter 6) to it.
@@ -58,14 +71,10 @@ export async function sendWhatsappConfirmation({ event, guest, rsvpId }) {
             whatsappNumber: cleanPhone
         };
 
-        const authHeader = WATI_CONFIG.ACCESS_TOKEN.trim().startsWith('Bearer ')
-            ? WATI_CONFIG.ACCESS_TOKEN.trim()
-            : `Bearer ${WATI_CONFIG.ACCESS_TOKEN.trim()}`;
-
         console.log(`⏳ Sending WhatsApp to ${cleanPhone}...`, {
-            url: `${baseUrl}/api/v1/sendTemplateMessage`,
-            template: WATI_CONFIG.TEMPLATE_NAME,
-            authPrefix: authHeader.substring(0, 15) + '...'
+            endpoint: `${baseUrl}/api/v1/sendTemplateMessage`,
+            tokenLength: rawToken.length,
+            template: WATI_CONFIG.TEMPLATE_NAME
         });
 
         const response = await fetch(`${baseUrl}/api/v1/sendTemplateMessage?whatsappNumber=${cleanPhone}`, {
