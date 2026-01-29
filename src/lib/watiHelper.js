@@ -95,8 +95,8 @@ export async function sendWhatsappConfirmation({ event, guest, rsvpId }) {
         }
 
         // Wati returns 200 OK even if delivery fails in some cases (e.g. quota)
-        if (responseData.result === false || responseData.result === 'error') {
-            console.warn('⚠️ Wati accepted request but returned a failure result:', responseData);
+        if (responseData.result === false || responseData.result === 'error' || responseData.errors) {
+            console.warn('⚠️ Wati accepted request but returned a failure result:', JSON.stringify(responseData, null, 2));
         } else {
             console.log(`✅ Wati Response:`, responseData);
         }
