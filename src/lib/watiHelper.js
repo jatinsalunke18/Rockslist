@@ -36,6 +36,9 @@ export async function sendWhatsappConfirmation({ event, guest, rsvpId }) {
 
     try {
         const cleanPhone = guest.phone.replace(/\D/g, '');
+        const baseUrl = WATI_CONFIG.API_ENDPOINT.endsWith('/')
+            ? WATI_CONFIG.API_ENDPOINT.slice(0, -1)
+            : WATI_CONFIG.API_ENDPOINT;
 
         // Wati Dynamic Buttons work by taking the 'Base URL' in the dashboard
         // and appending this 'Suffix' (parameter 6) to it.
@@ -55,12 +58,20 @@ export async function sendWhatsappConfirmation({ event, guest, rsvpId }) {
             whatsappNumber: cleanPhone
         };
 
-        console.log(`⏳ Sending WhatsApp to ${cleanPhone}...`, payload);
+        const authHeader = WATI_CONFIG.ACCESS_TOKEN.trim().startsWith('Bearer ')
+            ? WATI_CONFIG.ACCESS_TOKEN.trim()
+            : `Bearer ${WATI_CONFIG.ACCESS_TOKEN.trim()}`;
 
-        const response = await fetch(`${WATI_CONFIG.API_ENDPOINT}/api/v1/sendTemplateMessage?whatsappNumber=${cleanPhone}`, {
+        console.log(`⏳ Sending WhatsApp to ${cleanPhone}...`, {
+            url: `${baseUrl}/api/v1/sendTemplateMessage`,
+            template: WATI_CONFIG.TEMPLATE_NAME,
+            authPrefix: authHeader.substring(0, 15) + '...'
+        });
+
+        const response = await fetch(`${baseUrl}/api/v1/sendTemplateMessage?whatsappNumber=${cleanPhone}`, {
             method: 'POST',
             headers: {
-                'Authorization': WATI_CONFIG.ACCESS_TOKEN.startsWith('Bearer ') ? WATI_CONFIG.ACCESS_TOKEN : `Bearer ${WATI_CONFIG.ACCESS_TOKEN}`,
+                'Authorization': authHeader,
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify(payload)
@@ -69,12 +80,17 @@ export async function sendWhatsappConfirmation({ event, guest, rsvpId }) {
         const responseData = await response.json().catch(() => ({}));
 
         if (!response.ok) {
-            throw new Error(`Wati API error: ${response.status} ${JSON.stringify(responseData)}`);
+            console.error('❌ Wati API Error Detail:', {
+                status: response.status,
+                data: responseData,
+                endpoint: baseUrl
+            });
+            throw new Error(`Wati API error: ${response.status}`);
         }
 
         console.log(`✅ WhatsApp sent successfully to ${cleanPhone}:`, responseData);
 
     } catch (error) {
-        console.error('WhatsApp send failed (non-blocking):', error);
+        console.error('WhatsApp send failed (non-blocking):', error.message);
     }
 }
