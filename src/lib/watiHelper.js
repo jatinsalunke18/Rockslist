@@ -60,9 +60,10 @@ export async function sendWhatsappConfirmation({ event, guest, rsvpId }) {
                 { name: "2", value: event.name || 'Event' },
                 { name: "3", value: event.date || 'TBA' },
                 { name: "4", value: event.time || 'TBA' },
-                { name: "5", value: event.location || 'Venue' }
+                { name: "5", value: event.location || 'Venue' },
+                { name: "6", value: ticketSuffix } // Try as 6th parameter
             ],
-            button_url_parameter: ticketSuffix, // CRITICAL: This maps to the {{1}} in a Dynamic Button URL
+            button_url_parameter: ticketSuffix, // ALSO try as specific button helper
             whatsappNumber: cleanPhone
         };
 
