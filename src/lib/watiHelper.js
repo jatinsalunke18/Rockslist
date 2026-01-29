@@ -38,25 +38,20 @@ export async function sendWhatsappConfirmation({ event, guest, rsvpId }) {
         const cleanPhone = guest.phone.replace(/\D/g, '');
         const baseUrl = (WATI_CONFIG.API_ENDPOINT || '').trim().replace(/\/$/, '');
 
-        // Clean token: Remove quotes if any, trim whitespace
-        let rawToken = (WATI_CONFIG.ACCESS_TOKEN || '').trim();
-        if (rawToken.startsWith('"') && rawToken.endsWith('"')) {
-            rawToken = rawToken.slice(1, -1);
-        }
+        // --- ADVANCED TOKEN CLEANING ---
+        // 1. Remove any surrounding quotes
+        let token = (WATI_CONFIG.ACCESS_TOKEN || '').trim().replace(/^["'](.+)["']$/, '$1');
 
-        const authHeader = rawToken.toLowerCase().startsWith('bearer ')
-            ? rawToken
-            : `Bearer ${rawToken}`;
+        // 2. Remove any accidental double "Bearer" and ensure single "Bearer " prefix
+        token = token.replace(/^(bearer\s+)+/i, ''); // Strip all existing Bearer prefixes
+        const authHeader = `Bearer ${token}`;
 
-        if (!rawToken || rawToken === 'undefined') {
-            console.error('❌ WhatsApp Error: WATI_ACCESS_TOKEN is missing or undefined.');
+        if (!token || token === 'undefined' || token.length < 20) {
+            console.error('❌ WhatsApp Error: WATI_ACCESS_TOKEN is invalid or too short.', { length: token?.length });
             return;
         }
 
-        // Wati Dynamic Buttons work by taking the 'Base URL' in the dashboard
-        // and appending this 'Suffix' (parameter 6) to it.
         const ticketSuffix = `rsvp/${event.id}?rsvpId=${rsvpId}&view=true`;
-
         const payload = {
             template_name: WATI_CONFIG.TEMPLATE_NAME,
             broadcast_name: 'RSVP Confirmation',
@@ -71,9 +66,11 @@ export async function sendWhatsappConfirmation({ event, guest, rsvpId }) {
             whatsappNumber: cleanPhone
         };
 
-        console.log(`⏳ Sending WhatsApp to ${cleanPhone}...`, {
+        // --- DIAGNOSTIC LOG ---
+        console.log(`📡 Wati Connection Check:`, {
             endpoint: `${baseUrl}/api/v1/sendTemplateMessage`,
-            tokenLength: rawToken.length,
+            tokenCheck: `${token.substring(0, 8)}...${token.substring(token.length - 8)}`,
+            tokenLength: token.length,
             template: WATI_CONFIG.TEMPLATE_NAME
         });
 
@@ -89,10 +86,10 @@ export async function sendWhatsappConfirmation({ event, guest, rsvpId }) {
         const responseData = await response.json().catch(() => ({}));
 
         if (!response.ok) {
-            console.error('❌ Wati API Error Detail:', {
+            console.error('❌ Wati API 401 Reveal:', {
                 status: response.status,
-                data: responseData,
-                endpoint: baseUrl
+                message: responseData.message || responseData.error || 'Check Wati Token/Quota',
+                fullResponse: JSON.stringify(responseData) // Force visibility
             });
             throw new Error(`Wati API error: ${response.status}`);
         }
