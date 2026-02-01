@@ -1,9 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { db, storage } from '../lib/firebase';
-import { doc, getDoc, deleteDoc, collection, getDocs, addDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, deleteDoc, collection, getDocs } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
 import { indianStates } from '../lib/statesData';
+import Header from '../components/Header';
+import Toast from '../components/Toast';
+import Modal from '../components/Modal';
+import AddGuestModal from '../components/AddGuestModal';
+import FriendsPicker from '../components/FriendsPicker';
 
 export default function CreateList() {
     const navigate = useNavigate();
@@ -11,12 +16,9 @@ export default function CreateList() {
     const location = useLocation();
     const editId = searchParams.get('edit');
     const { user, loading: authLoading } = useAuth();
-    // Default to loading to prevent flash of empty content, useEffect will resolve it
     const [loading, setLoading] = useState(true);
     const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
     const [confirmModal, setConfirmModal] = useState({ show: false, title: '', message: '', onConfirm: null });
-
-    // ... (rest of state definitions)
 
     const [formData, setFormData] = useState({
         name: '',
@@ -77,7 +79,6 @@ export default function CreateList() {
                     if (docSnap.exists()) {
                         const data = docSnap.data();
 
-                        // Ownership check
                         if (data.createdBy !== user?.uid) {
                             console.error("Unauthorized edit attempt");
                             alert("You do not have permission to edit this guestlist.");
@@ -91,6 +92,7 @@ export default function CreateList() {
                             time: data.time || '',
                             location: data.location || '',
                             city: data.city || '',
+                            state: data.state || '',
                             maxAttendees: data.maxAttendees || '',
                             closeTime: data.closeTime || '',
                             ticketLink: data.ticketLink || '',
@@ -115,15 +117,12 @@ export default function CreateList() {
             };
             fetchEvent();
         } else {
-            // Create mode - reset form if NOT restoring from preview
-            // Only reset if we don't have location state (e.g. coming back from preview)
             if (location.state?.formData) {
                 setFormData(location.state.formData);
                 if (location.state.flyer) setFlyer(location.state.flyer);
                 if (location.state.previewUrl) setPreviewUrl(location.state.previewUrl);
                 if (location.state.currentFlyerUrl) setCurrentFlyerUrl(location.state.currentFlyerUrl);
             } else {
-                console.log("Setting default form data");
                 setFormData({
                     name: '',
                     date: '',
@@ -172,7 +171,12 @@ export default function CreateList() {
     const handleRemoveFlyer = () => {
         setFlyer(null);
         setPreviewUrl('');
-        setCurrentFlyerUrl(''); // Clear the existing image URL so it can be deleted
+        setCurrentFlyerUrl('');
+    };
+
+    const handleResetLocationPicker = (e) => {
+        const val = e.target.value;
+        setFormData(prev => ({ ...prev, state: val, city: '' }));
     };
 
     const handleToggleChange = (e) => {
@@ -267,7 +271,6 @@ export default function CreateList() {
             return;
         }
 
-        // Navigate to preview instead of publishing directly
         navigate('/preview', {
             state: {
                 formData,
@@ -281,15 +284,10 @@ export default function CreateList() {
 
     return (
         <section className="screen active">
-            <header className="home-header sticky-header">
-                <div className="header-left">
-                    <button className="icon-btn-plain" onClick={() => navigate(-1)}><i className="fas fa-arrow-left"></i></button>
-                </div>
-                <div className="header-center">
-                    <span className="logo-text-medium">{editId ? 'Edit Guestlist' : 'Create Guestlist'}</span>
-                </div>
-                <div className="header-right"></div>
-            </header>
+            <Header
+                showBack={true}
+                title={editId ? 'Edit Guestlist' : 'Create Guestlist'}
+            />
 
             {authLoading ? (
                 <div className="screen-content center-msg">
@@ -372,10 +370,7 @@ export default function CreateList() {
 
                             <div className="form-group">
                                 <label htmlFor="state">State / Region *</label>
-                                <select id="state" required value={formData.state} onChange={(e) => {
-                                    const val = e.target.value;
-                                    setFormData(prev => ({ ...prev, state: val, city: '' }));
-                                }}>
+                                <select id="state" required value={formData.state} onChange={handleResetLocationPicker}>
                                     <option value="" disabled>Select State</option>
                                     {indianStates.map(item => (
                                         <option key={item.state} value={item.state}>{item.state}</option>
@@ -508,179 +503,42 @@ export default function CreateList() {
                 </>
             )}
 
-            {toast.show && (
-                <div className={`toast-notification ${toast.type}`}>
-                    <div className="toast-content">
-                        <i className={`fas ${toast.type === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle'}`}></i>
-                        <span>{toast.message}</span>
-                    </div>
-                </div>
-            )}
+            <Toast {...toast} />
 
-            {confirmModal.show && (
-                <div className="modal-overlay">
-                    <div className="custom-modal">
-                        <div className="modal-header">
-                            <h3>{confirmModal.title}</h3>
-                        </div>
-                        <div className="modal-body">
-                            <p>{confirmModal.message}</p>
-                        </div>
-                        <div className="modal-footer">
-                            <button type="button" className="secondary-btn" onClick={closeConfirm} disabled={loading}>Cancel</button>
-                            <button type="button" className="danger-btn" onClick={confirmModal.onConfirm} disabled={loading}>
-                                {loading ? 'Deleting...' : 'Delete'}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            <Modal
+                show={confirmModal.show}
+                onClose={closeConfirm}
+                title={confirmModal.title}
+                footer={(
+                    <>
+                        <button type="button" className="secondary-btn" onClick={closeConfirm} disabled={loading}>Cancel</button>
+                        <button type="button" className="danger-btn" onClick={confirmModal.onConfirm} disabled={loading}>
+                            {loading ? 'Deleting...' : 'Delete'}
+                        </button>
+                    </>
+                )}
+            >
+                <p>{confirmModal.message}</p>
+            </Modal>
 
-            {showGuestModal && (
-                <div className="modal-overlay" style={{ animation: 'fadeIn 0.2s ease' }}>
-                    <div className="custom-modal" style={{ maxWidth: 420, animation: 'slideUp 0.3s ease' }}>
-                        <div className="modal-header" style={{ borderBottom: '1px solid var(--border)', paddingBottom: 16 }}>
-                            <h3 style={{ fontSize: 18, fontWeight: 700, marginBottom: 6 }}>Add Guest to Event</h3>
-                            <p style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 400 }}>Guests added here will be invited automatically</p>
-                        </div>
-                        <form onSubmit={handleAddManualGuest}>
-                            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '20px 24px' }}>
-                                <div style={{ position: 'relative' }}>
-                                    <i className="fas fa-user" style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: 14 }}></i>
-                                    <input
-                                        type="text"
-                                        placeholder="Full Name *"
-                                        className="common-input"
-                                        value={manualGuest.name}
-                                        onChange={(e) => setManualGuest({ ...manualGuest, name: e.target.value })}
-                                        required
-                                        style={{ paddingLeft: 40, height: 48, fontSize: 15, borderRadius: 8 }}
-                                    />
-                                </div>
-                                <div style={{ position: 'relative' }}>
-                                    <i className="fas fa-phone" style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: 14 }}></i>
-                                    <input
-                                        type="tel"
-                                        placeholder="Phone Number *"
-                                        className="common-input"
-                                        value={manualGuest.phone}
-                                        onChange={(e) => setManualGuest({ ...manualGuest, phone: e.target.value })}
-                                        required
-                                        maxLength="10"
-                                        style={{ paddingLeft: 40, height: 48, fontSize: 15, borderRadius: 8 }}
-                                    />
-                                </div>
-                                <div style={{ position: 'relative' }}>
-                                    <i className="fas fa-envelope" style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: 14 }}></i>
-                                    <input
-                                        type="email"
-                                        placeholder="Email (Optional)"
-                                        className="common-input"
-                                        value={manualGuest.email}
-                                        onChange={(e) => setManualGuest({ ...manualGuest, email: e.target.value })}
-                                        style={{ paddingLeft: 40, height: 48, fontSize: 15, borderRadius: 8 }}
-                                    />
-                                </div>
-                                <div>
-                                    <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text-main)', marginBottom: 10 }}>Gender</label>
-                                    <div style={{ display: 'flex', gap: 8 }}>
-                                        {['male', 'female', 'other'].map(g => (
-                                            <button
-                                                key={g}
-                                                type="button"
-                                                onClick={() => setManualGuest({ ...manualGuest, gender: g })}
-                                                style={{
-                                                    flex: 1,
-                                                    padding: '10px 16px',
-                                                    border: `2px solid ${manualGuest.gender === g ? 'var(--primary)' : 'var(--border)'}`,
-                                                    borderRadius: 8,
-                                                    background: manualGuest.gender === g ? 'rgba(52, 35, 166, 0.08)' : 'transparent',
-                                                    color: manualGuest.gender === g ? 'var(--primary)' : 'var(--text-main)',
-                                                    fontWeight: manualGuest.gender === g ? 600 : 500,
-                                                    fontSize: 14,
-                                                    textTransform: 'capitalize',
-                                                    cursor: 'pointer',
-                                                    transition: 'all 0.2s ease'
-                                                }}
-                                            >
-                                                {g}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="modal-footer" style={{ display: 'flex', gap: 12, padding: '16px 24px', borderTop: '1px solid var(--border)' }}>
-                                <button
-                                    type="button"
-                                    className="secondary-btn"
-                                    onClick={() => {
-                                        setShowGuestModal(false);
-                                        setManualGuest({ name: '', phone: '', email: '', gender: 'male' });
-                                    }}
-                                    style={{ flex: 1, height: 48, fontSize: 15, fontWeight: 600 }}
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    type="submit"
-                                    className="primary-btn"
-                                    disabled={!manualGuest.name || !manualGuest.phone}
-                                    style={{ flex: 1, height: 48, fontSize: 15, fontWeight: 600 }}
-                                >
-                                    Add to Guestlist
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            )}
+            <AddGuestModal
+                show={showGuestModal}
+                onClose={() => setShowGuestModal(false)}
+                onAdd={handleAddManualGuest}
+                manualGuest={manualGuest}
+                setManualGuest={setManualGuest}
+                title="Add Guest to Event"
+                subtitle="Guests added here will be invited automatically"
+            />
 
-            {showFriendsPicker && (
-                <>
-                    <div className="action-sheet-overlay" onClick={() => setShowFriendsPicker(false)}></div>
-                    <div className="action-sheet">
-                        <div className="action-sheet-handle"></div>
-                        <div className="action-sheet-content">
-                            <h3 style={{ marginBottom: 16, fontSize: 18, fontWeight: 700 }}>Add from Friends</h3>
-                            <div style={{ maxHeight: 300, overflowY: 'auto', marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                                {friends.length === 0 ? (
-                                    <p style={{ textAlign: 'center', padding: '20px 0' }}>No friends found</p>
-                                ) : (
-                                    friends.map(friend => (
-                                        <label key={friend.id} style={{
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: 12,
-                                            padding: 12,
-                                            border: '1px solid var(--border)',
-                                            borderRadius: 8,
-                                            cursor: 'pointer',
-                                            background: selectedFriends.includes(friend.id) ? 'rgba(52, 35, 166, 0.05)' : 'white'
-                                        }}>
-                                            <input
-                                                type="checkbox"
-                                                checked={selectedFriends.includes(friend.id)}
-                                                onChange={() => handleFriendSelect(friend.id)}
-                                            />
-                                            <div style={{ flex: 1 }}>
-                                                <div style={{ fontWeight: 600 }}>{friend.name}</div>
-                                                <div style={{ fontSize: 12, color: '#888' }}>{friend.phone || friend.email}</div>
-                                            </div>
-                                            {friend.linkedUid && <span style={{ fontSize: 10, color: 'var(--success)' }}>✓</span>}
-                                        </label>
-                                    ))
-                                )}
-                            </div>
-                            <div style={{ display: 'flex', gap: 12 }}>
-                                <button className="secondary-btn" style={{ flex: 1 }} onClick={() => setShowFriendsPicker(false)}>Cancel</button>
-                                <button className="primary-btn" style={{ flex: 2 }} onClick={handleConfirmFriends} disabled={selectedFriends.length === 0}>
-                                    Add {selectedFriends.length} Selected
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </>
-            )}
+            <FriendsPicker
+                show={showFriendsPicker}
+                onClose={() => setShowFriendsPicker(false)}
+                friends={friends}
+                selectedFriends={selectedFriends}
+                onSelect={handleFriendSelect}
+                onConfirm={handleConfirmFriends}
+            />
         </section>
     );
 }

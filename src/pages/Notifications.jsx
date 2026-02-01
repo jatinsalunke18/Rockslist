@@ -3,6 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { db } from '../lib/firebase';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, limit } from 'firebase/firestore';
+import Header from '../components/Header';
+import EmptyState from '../components/EmptyState';
+import LoadingSpinner from '../components/LoadingSpinner';
 
 export default function Notifications() {
     const navigate = useNavigate();
@@ -49,8 +52,7 @@ export default function Notifications() {
         try {
             if (!notif.read) {
                 await updateDoc(doc(db, "notifications", notif.id), { read: true });
-                // Update local state
-                setNotifications(prev => 
+                setNotifications(prev =>
                     prev.map(n => n.id === notif.id ? { ...n, read: true } : n)
                 );
             }
@@ -59,22 +61,33 @@ export default function Notifications() {
             }
         } catch (err) {
             console.error('Failed to mark notification as read:', err);
-            // Still navigate even if marking as read fails
             if (notif.eventId) {
                 navigate(`/event/${notif.eventId}`);
             }
         }
     };
 
-    const getIcon = (type) => {
+    const getIconClass = (type) => {
         switch (type) {
-            case 'RSVP_CONFIRMED': return <i className="fas fa-check-circle" style={{ color: 'var(--success)' }}></i>;
-            case 'RSVP_EDITED': return <i className="fas fa-edit" style={{ color: 'var(--primary)' }}></i>;
-            case 'RSVP_REMOVED': return <i className="fas fa-times-circle" style={{ color: 'var(--error)' }}></i>;
-            case 'EVENT_ADDED': return <i className="fas fa-calendar-plus" style={{ color: 'var(--primary)' }}></i>;
-            case 'rsvp_confirmation': return <i className="fas fa-check-circle" style={{ color: 'var(--success)' }}></i>;
-            case 'new_guest': return <i className="fas fa-user-plus" style={{ color: 'var(--primary)' }}></i>;
-            default: return <i className="fas fa-bell" style={{ color: 'var(--text-muted)' }}></i>;
+            case 'RSVP_CONFIRMED': return 'fa-check-circle';
+            case 'RSVP_EDITED': return 'fa-edit';
+            case 'RSVP_REMOVED': return 'fa-times-circle';
+            case 'EVENT_ADDED': return 'fa-calendar-plus';
+            case 'rsvp_confirmation': return 'fa-check-circle';
+            case 'new_guest': return 'fa-user-plus';
+            default: return 'fa-bell';
+        }
+    };
+
+    const getIconColor = (type) => {
+        switch (type) {
+            case 'RSVP_CONFIRMED': return 'var(--success)';
+            case 'RSVP_EDITED': return 'var(--primary)';
+            case 'RSVP_REMOVED': return 'var(--error)';
+            case 'EVENT_ADDED': return 'var(--primary)';
+            case 'rsvp_confirmation': return 'var(--success)';
+            case 'new_guest': return 'var(--primary)';
+            default: return 'var(--text-muted)';
         }
     };
 
@@ -96,31 +109,23 @@ export default function Notifications() {
 
     return (
         <section className="screen active">
-            <header className="home-header sticky-header">
-                <div className="header-left">
-                    <button className="icon-btn-plain" onClick={() => navigate(-1)}><i className="fas fa-arrow-left"></i></button>
-                </div>
-                <div className="header-center">
-                    <span className="logo-text-medium">Notifications</span>
-                </div>
-                <div className="header-right"></div>
-            </header>
+            <Header showBack={true} title="Notifications" />
 
             <div className="screen-content" style={{ padding: '16px 24px 100px' }}>
                 {loading ? (
-                    <div className="center-msg">Loading...</div>
+                    <LoadingSpinner />
                 ) : notifications.length === 0 && !error ? (
-                    <div className="empty-state">
-                        <i className="fas fa-bell-slash" style={{ fontSize: 48, color: 'var(--text-muted)', opacity: 0.3 }}></i>
-                        <h3>No notifications yet</h3>
-                        <p>You'll see updates about your RSVPs here</p>
-                    </div>
+                    <EmptyState
+                        icon="fa-bell-slash"
+                        title="No notifications yet"
+                        description="You'll see updates about your RSVPs here"
+                    />
                 ) : error ? (
-                    <div className="empty-state">
-                        <i className="fas fa-exclamation-circle" style={{ fontSize: 48, color: 'var(--error)' }}></i>
-                        <h3>Unable to load</h3>
-                        <p>{error}</p>
-                    </div>
+                    <EmptyState
+                        icon="fa-exclamation-circle"
+                        title="Unable to load"
+                        description={error}
+                    />
                 ) : (
                     <div className="notifications-list">
                         {notifications.map(notif => (
@@ -130,7 +135,7 @@ export default function Notifications() {
                                 onClick={() => handleNotificationClick(notif)}
                             >
                                 <div className="notif-icon">
-                                    {getIcon(notif.type)}
+                                    <i className={`fas ${getIconClass(notif.type)}`} style={{ color: getIconColor(notif.type) }}></i>
                                 </div>
                                 <div className="notif-content">
                                     <div className="notif-header">

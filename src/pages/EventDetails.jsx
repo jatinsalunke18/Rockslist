@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { db } from '../lib/firebase';
-import { doc, getDoc, collection, onSnapshot } from 'firebase/firestore';
+import { doc, getDoc, collection, onSnapshot, deleteDoc, updateDoc, increment } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
 import { notifyRSVPRemoval, removeUserFromJoinedList } from '../lib/rsvpHelper';
 import { isEventClosed } from '../lib/validation';
+import Modal from '../components/Modal';
+import ActionSheet from '../components/ActionSheet';
+import LoadingSpinner from '../components/LoadingSpinner';
 
 export default function EventDetails() {
     const { id } = useParams();
@@ -32,7 +35,6 @@ export default function EventDetails() {
                     const data = docSnap.data();
                     setEvent({ id: docSnap.id, ...data });
 
-                    // Fetch host details
                     if (data.createdBy) {
                         const hostRef = doc(db, "users", data.createdBy);
                         const hostSnap = await getDoc(hostRef);
@@ -135,9 +137,8 @@ export default function EventDetails() {
         if (!userRsvpId) return;
         setExiting(true);
         try {
-            const { deleteDoc, doc: docRef, updateDoc, increment, getDoc: getDocSnapshot } = await import('firebase/firestore');
-            const rsvpRef = docRef(db, `lists/${id}/rsvps`, userRsvpId);
-            const rsvpSnap = await getDocSnapshot(rsvpRef);
+            const rsvpRef = doc(db, `lists/${id}/rsvps`, userRsvpId);
+            const rsvpSnap = await getDoc(rsvpRef);
 
             if (rsvpSnap.exists()) {
                 const data = rsvpSnap.data();
@@ -145,7 +146,7 @@ export default function EventDetails() {
 
                 await deleteDoc(rsvpRef);
 
-                const eventRef = docRef(db, 'lists', id);
+                const eventRef = doc(db, 'lists', id);
                 await updateDoc(eventRef, {
                     attendeesCount: increment(-guestCount)
                 });
@@ -154,10 +155,7 @@ export default function EventDetails() {
                 const updatedRsvps = userRsvps.filter(rsvpId => rsvpId !== id);
                 localStorage.setItem('userRsvps', JSON.stringify(updatedRsvps));
 
-                // Remove from joinedUserIds
                 await removeUserFromJoinedList(id, user.uid);
-
-                // Create notification for exit using helper
                 await notifyRSVPRemoval(user.uid, id, event?.eventName || event?.name);
             }
 
@@ -174,8 +172,7 @@ export default function EventDetails() {
     const handleDeleteEvent = async () => {
         setDeleting(true);
         try {
-            const { deleteDoc, doc: docRef } = await import('firebase/firestore');
-            await deleteDoc(docRef(db, 'lists', id));
+            await deleteDoc(doc(db, 'lists', id));
             navigate('/');
         } catch (err) {
             console.error('Delete event failed:', err);
@@ -185,7 +182,7 @@ export default function EventDetails() {
         }
     };
 
-    if (loading) return <div className="screen center-msg">Loading...</div>;
+    if (loading) return <LoadingSpinner fullScreen={true} message="Loading event details..." />;
     if (!event) return <div className="screen center-msg">Event not found</div>;
 
     const isCreator = user && event.createdBy === user.uid;
@@ -201,7 +198,6 @@ export default function EventDetails() {
                         <i className="fas fa-ellipsis-v"></i>
                     </button>
 
-                    {/* Event Menu Dropdown */}
                     {showEventMenu && (
                         <>
                             <div className="dropdown-overlay" onClick={() => setShowEventMenu(false)}></div>
@@ -296,7 +292,6 @@ export default function EventDetails() {
                 </div>
             </div>
 
-            {/* Bottom Actions */}
             {hasJoined && !isCreator && (
                 <div className="event-bottom-actions">
                     <button className="action-btn-primary" onClick={() => setShowRsvpSheet(true)} style={{ width: '100%' }}>
@@ -328,85 +323,68 @@ export default function EventDetails() {
                 </div>
             )}
 
-            {/* RSVP Management Bottom Sheet */}
-            {showRsvpSheet && (
-                <>
-                    <div className="action-sheet-overlay" onClick={() => setShowRsvpSheet(false)}></div>
-                    <div className="action-sheet">
-                        <div className="action-sheet-handle"></div>
-                        <div className="action-sheet-content">
-                            <div className="action-sheet-status">
-                                <i className="fas fa-check-circle"></i>
-                                <span>RSVP Confirmed</span>
-                            </div>
-                            <div className="action-sheet-actions">
-                                <button className="action-sheet-btn" onClick={() => { setShowRsvpSheet(false); navigate(`/rsvp/${id}?view=true&rsvpId=${userRsvpId}`); }}>
-                                    <i className="fas fa-eye"></i>
-                                    <span>View Entry Details</span>
-                                </button>
-                                <button
-                                    className="action-sheet-btn"
-                                    onClick={() => { setShowRsvpSheet(false); navigate(`/rsvp/${id}?edit=true&rsvpId=${userRsvpId}`); }}
-                                    disabled={isEventClosed(event)}
-                                    style={{ opacity: isEventClosed(event) ? 0.5 : 1 }}
-                                >
-                                    <i className="fas fa-edit"></i>
-                                    <span>Edit Entry {isEventClosed(event) && '(Closed)'}</span>
-                                </button>
-                                <button
-                                    className="action-sheet-btn action-sheet-btn-danger"
-                                    onClick={() => { setShowRsvpSheet(false); setShowExitModal(true); }}
-                                    disabled={isEventClosed(event)}
-                                    style={{ opacity: isEventClosed(event) ? 0.5 : 1 }}
-                                >
-                                    <i className="fas fa-sign-out-alt"></i>
-                                    <span>Exit Guestlist {isEventClosed(event) && '(Closed)'}</span>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </>
-            )}
-
-            {/* Exit Confirmation Modal */}
-            {showExitModal && (
-                <div className="modal-overlay">
-                    <div className="custom-modal">
-                        <div className="modal-header">
-                            <h3>Exit Guestlist</h3>
-                        </div>
-                        <div className="modal-body">
-                            <p>Are you sure you want to exit this guestlist? This action cannot be undone.</p>
-                        </div>
-                        <div className="modal-footer">
-                            <button className="secondary-btn" onClick={() => setShowExitModal(false)} disabled={exiting}>Cancel</button>
-                            <button className="danger-btn" onClick={handleExitGuestlist} disabled={exiting}>
-                                {exiting ? 'Exiting...' : 'Exit'}
-                            </button>
-                        </div>
-                    </div>
+            <ActionSheet show={showRsvpSheet} onClose={() => setShowRsvpSheet(false)} title="Manage RSVP">
+                <div className="action-sheet-status">
+                    <i className="fas fa-check-circle"></i>
+                    <span>RSVP Confirmed</span>
                 </div>
-            )}
-
-            {/* Delete Event Modal */}
-            {showDeleteModal && (
-                <div className="modal-overlay">
-                    <div className="custom-modal">
-                        <div className="modal-header">
-                            <h3>Delete Event</h3>
-                        </div>
-                        <div className="modal-body">
-                            <p>Are you sure you want to delete this event? All guestlist data will be lost. This action cannot be undone.</p>
-                        </div>
-                        <div className="modal-footer">
-                            <button className="secondary-btn" onClick={() => setShowDeleteModal(false)} disabled={deleting}>Cancel</button>
-                            <button className="danger-btn" onClick={handleDeleteEvent} disabled={deleting}>
-                                {deleting ? 'Deleting...' : 'Delete'}
-                            </button>
-                        </div>
-                    </div>
+                <div className="action-sheet-actions">
+                    <button className="action-sheet-btn" onClick={() => { setShowRsvpSheet(false); navigate(`/rsvp/${id}?view=true&rsvpId=${userRsvpId}`); }}>
+                        <i className="fas fa-eye"></i>
+                        <span>View Entry Details</span>
+                    </button>
+                    <button
+                        className="action-sheet-btn"
+                        onClick={() => { setShowRsvpSheet(false); navigate(`/rsvp/${id}?edit=true&rsvpId=${userRsvpId}`); }}
+                        disabled={isEventClosed(event)}
+                        style={{ opacity: isEventClosed(event) ? 0.5 : 1 }}
+                    >
+                        <i className="fas fa-edit"></i>
+                        <span>Edit Entry {isEventClosed(event) && '(Closed)'}</span>
+                    </button>
+                    <button
+                        className="action-sheet-btn action-sheet-btn-danger"
+                        onClick={() => { setShowRsvpSheet(false); setShowExitModal(true); }}
+                        disabled={isEventClosed(event)}
+                        style={{ opacity: isEventClosed(event) ? 0.5 : 1 }}
+                    >
+                        <i className="fas fa-sign-out-alt"></i>
+                        <span>Exit Guestlist {isEventClosed(event) && '(Closed)'}</span>
+                    </button>
                 </div>
-            )}
+            </ActionSheet>
+
+            <Modal
+                show={showExitModal}
+                onClose={() => setShowExitModal(false)}
+                title="Exit Guestlist"
+                footer={(
+                    <>
+                        <button className="secondary-btn" onClick={() => setShowExitModal(false)} disabled={exiting}>Cancel</button>
+                        <button className="danger-btn" onClick={handleExitGuestlist} disabled={exiting}>
+                            {exiting ? 'Exiting...' : 'Exit'}
+                        </button>
+                    </>
+                )}
+            >
+                <p>Are you sure you want to exit this guestlist? This action cannot be undone.</p>
+            </Modal>
+
+            <Modal
+                show={showDeleteModal}
+                onClose={() => setShowDeleteModal(false)}
+                title="Delete Event"
+                footer={(
+                    <>
+                        <button className="secondary-btn" onClick={() => setShowDeleteModal(false)} disabled={deleting}>Cancel</button>
+                        <button className="danger-btn" onClick={handleDeleteEvent} disabled={deleting}>
+                            {deleting ? 'Deleting...' : 'Delete'}
+                        </button>
+                    </>
+                )}
+            >
+                <p>Are you sure you want to delete this event? All guestlist data will be lost. This action cannot be undone.</p>
+            </Modal>
         </section>
     );
 }

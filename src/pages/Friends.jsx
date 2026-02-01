@@ -3,6 +3,10 @@ import { useEffect, useState } from 'react';
 import { db } from '../lib/firebase';
 import { collection, getDocs, orderBy, query, deleteDoc, doc } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
+import Header from '../components/Header';
+import Modal from '../components/Modal';
+import EmptyState from '../components/EmptyState';
+import LoadingSpinner from '../components/LoadingSpinner';
 
 export default function Friends() {
     const navigate = useNavigate();
@@ -18,27 +22,24 @@ export default function Friends() {
             const friendsRef = collection(db, `users/${user.uid}/friends`);
             const q = query(friendsRef, orderBy('addedAt', 'desc'));
             const snapshot = await getDocs(q);
-            
-            // Filter out self and duplicates
+
             const userEmail = user.email?.toLowerCase();
             const userPhone = user.phoneNumber?.replace(/[^0-9]/g, '');
             const seen = new Set();
-            
+
             const friendsList = snapshot.docs
                 .map(doc => ({ id: doc.id, ...doc.data() }))
                 .filter(friend => {
-                    // Exclude self by UID, email, or phone
                     if (friend.linkedUid === user.uid) return false;
                     if (userEmail && friend.email?.toLowerCase() === userEmail) return false;
                     if (userPhone && friend.phone?.replace(/[^0-9]/g, '') === userPhone) return false;
-                    
-                    // Deduplicate by email or phone
+
                     const key = friend.email?.toLowerCase() || friend.phone?.replace(/[^0-9]/g, '');
                     if (seen.has(key)) return false;
                     seen.add(key);
                     return true;
                 });
-            
+
             setFriends(friendsList);
         } catch (err) {
             console.error('Error fetching friends:', err);
@@ -72,26 +73,28 @@ export default function Friends() {
         }
     };
 
+    const deleteModalFooter = (
+        <>
+            <button className="secondary-btn" onClick={() => setShowDeleteModal(false)} disabled={deleting}>Cancel</button>
+            <button className="danger-btn" onClick={handleDeleteConfirm} disabled={deleting}>
+                {deleting ? 'Removing...' : 'Remove'}
+            </button>
+        </>
+    );
+
     return (
         <section className="screen active">
-            <header className="home-header sticky-header">
-                <div className="header-left">
-                    <button className="icon-btn-plain" onClick={() => navigate(-1)}><i className="fas fa-arrow-left"></i></button>
-                </div>
-                <div className="header-center">
-                    <span className="logo-text-medium">My Friends</span>
-                </div>
-                <div className="header-right"></div>
-            </header>
+            <Header showBack={true} title="My Friends" />
+
             <div className="screen-content padding-x" style={{ paddingTop: 20 }}>
                 {loading ? (
-                    <p style={{ textAlign: 'center', color: 'var(--text-muted)' }}>Loading...</p>
+                    <LoadingSpinner />
                 ) : friends.length === 0 ? (
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 16, padding: 40 }}>
-                        <i className="fas fa-user-friends" style={{ fontSize: 48, color: 'var(--text-muted)', opacity: 0.3 }}></i>
-                        <p style={{ color: 'var(--text-muted)', textAlign: 'center' }}>No friends added yet</p>
-                        <p style={{ color: 'var(--text-muted)', textAlign: 'center', fontSize: 13 }}>Friends are automatically saved when you add guests to events</p>
-                    </div>
+                    <EmptyState
+                        icon="fa-user-friends"
+                        title="No friends added yet"
+                        description="Friends are automatically saved when you add guests to events"
+                    />
                 ) : (
                     <div className="friends-list">
                         {friends.map(friend => (
@@ -121,24 +124,14 @@ export default function Friends() {
                 )}
             </div>
 
-            {showDeleteModal && (
-                <div className="modal-overlay">
-                    <div className="custom-modal">
-                        <div className="modal-header">
-                            <h3>Remove Friend</h3>
-                        </div>
-                        <div className="modal-body">
-                            <p>Are you sure you want to remove {friendToDelete?.name} from your friends list?</p>
-                        </div>
-                        <div className="modal-footer">
-                            <button className="secondary-btn" onClick={() => setShowDeleteModal(false)} disabled={deleting}>Cancel</button>
-                            <button className="danger-btn" onClick={handleDeleteConfirm} disabled={deleting}>
-                                {deleting ? 'Removing...' : 'Remove'}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            <Modal
+                show={showDeleteModal}
+                onClose={() => setShowDeleteModal(false)}
+                title="Remove Friend"
+                footer={deleteModalFooter}
+            >
+                <p>Are you sure you want to remove <strong>{friendToDelete?.name}</strong> from your friends list?</p>
+            </Modal>
         </section>
     );
 }

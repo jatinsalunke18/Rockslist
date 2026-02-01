@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { db } from '../lib/firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
+import Header from '../components/Header';
 
 export default function Profile() {
     const { user, profile, logout } = useAuth();
@@ -37,15 +38,8 @@ export default function Profile() {
 
     return (
         <section className="screen active">
-            <header className="home-header sticky-header">
-                <div className="header-left">
-                    <button className="icon-btn-plain" onClick={() => navigate(-1)}><i className="fas fa-arrow-left"></i></button>
-                </div>
-                <div className="header-center">
-                    <span className="logo-text-medium">Profile</span>
-                </div>
-                <div className="header-right"></div>
-            </header>
+            <Header showBack={true} title="Profile" />
+
             <div className="screen-content profile-content">
                 <div className="profile-header-section">
                     <div className="profile-avatar">

@@ -99,6 +99,12 @@ export async function sendWhatsappConfirmation({ event, guest, rsvpId }) {
 
         // Wati returns 200 OK even if delivery fails in some cases (e.g. quota)
         if (responseData.result === false || responseData.result === 'error' || responseData.errors) {
+            const errorMsg = responseData.message || responseData.errors?.[0]?.message || '';
+
+            if (errorMsg.includes('131037')) {
+                console.error('🛑 ACTION REQUIRED: Your WhatsApp Display Name needs approval from Meta. Go to Meta Business Manager > WhatsApp Manager to approve it.');
+            }
+
             console.warn('⚠️ Wati accepted request but returned a failure result:', JSON.stringify(responseData, null, 2));
         } else {
             console.log(`✅ Wati Response:`, responseData);

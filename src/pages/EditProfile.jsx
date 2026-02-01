@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useState, useEffect } from 'react';
 import { db } from '../lib/firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
+import Header from '../components/Header';
 
 export default function EditProfile() {
     const navigate = useNavigate();
@@ -40,7 +41,6 @@ export default function EditProfile() {
             const fullPhone = '+91' + phoneFormatted;
             const normalizedEmail = formData.email.toLowerCase().trim();
 
-            // Uniqueness checks
             const emailUnique = await validateUnique('email', normalizedEmail);
             if (!emailUnique) {
                 alert('This email is already linked to another account');
@@ -73,15 +73,8 @@ export default function EditProfile() {
 
     return (
         <section className="screen active">
-            <header className="home-header sticky-header">
-                <div className="header-left">
-                    <button className="icon-btn-plain" onClick={() => navigate(-1)}><i className="fas fa-arrow-left"></i></button>
-                </div>
-                <div className="header-center">
-                    <span className="logo-text-medium">Edit Profile</span>
-                </div>
-                <div className="header-right"></div>
-            </header>
+            <Header showBack={true} title="Edit Profile" />
+
             <div className="screen-content padding-x" style={{ paddingTop: 20 }}>
                 <div className="form-group">
                     <label>Full Name</label>

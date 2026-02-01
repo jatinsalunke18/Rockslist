@@ -1,10 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { db } from '../lib/firebase';
-import { doc, getDoc, collection, addDoc, updateDoc, increment, serverTimestamp, setDoc, query, where, getDocs } from 'firebase/firestore';
+import { doc, getDoc, collection, updateDoc, increment, serverTimestamp, setDoc, query, where, getDocs } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
-import { validateGuestIdentity, findDuplicateGuest, checkEventLevelDuplicate, normalizePhone, normalizeEmail, isEventClosed } from '../lib/validation';
+import { validateGuestIdentity, findDuplicateGuest, checkEventLevelDuplicate, isEventClosed } from '../lib/validation';
 import { createRSVP, notifyRSVPEdit, notifyHostNewGuest } from '../lib/rsvpHelper';
+import Header from '../components/Header';
+import LoadingSpinner from '../components/LoadingSpinner';
+import ActionSheet from '../components/ActionSheet';
+import FriendsPicker from '../components/FriendsPicker';
 
 export default function Rsvp() {
     const { id } = useParams();
@@ -24,7 +28,7 @@ export default function Rsvp() {
     const [showFriendsPicker, setShowFriendsPicker] = useState(false);
     const [selectedFriends, setSelectedFriends] = useState([]);
     const [guestErrors, setGuestErrors] = useState({});
-    const [hostData, setHostData] = useState(null);
+    const [isSuccess, setIsSuccess] = useState(false);
 
     useEffect(() => {
         const fetchData = async () => {
@@ -34,15 +38,6 @@ export default function Rsvp() {
                 if (docSnap.exists()) {
                     const data = docSnap.data();
                     setEvent({ id: docSnap.id, ...data });
-
-                    // Fetch host details for WhatsApp/Email
-                    if (data.createdBy) {
-                        const hostRef = doc(db, "users", data.createdBy);
-                        const hostSnap = await getDoc(hostRef);
-                        if (hostSnap.exists()) {
-                            setHostData(hostSnap.data());
-                        }
-                    }
                 }
 
                 const friendsRef = collection(db, `users/${user.uid}/friends`);
@@ -147,17 +142,6 @@ export default function Rsvp() {
     };
 
     const handleAddFromFriends = () => {
-        const addedEmails = guests.map(g => g.email?.toLowerCase()).filter(Boolean);
-        const addedPhones = guests.map(g => g.phone?.replace(/[^0-9]/g, '')).filter(Boolean);
-        const availableFriends = friends.filter(f => {
-            const emailMatch = f.email && addedEmails.includes(f.email.toLowerCase());
-            const phoneMatch = f.phone && addedPhones.includes(f.phone.replace(/[^0-9]/g, ''));
-            return !emailMatch && !phoneMatch;
-        });
-        if (availableFriends.length === 0) {
-            alert('All friends have been added');
-            return;
-        }
         setSelectedFriends([]);
         setShowFriendsPicker(true);
     };
@@ -188,14 +172,9 @@ export default function Rsvp() {
         setShowFriendsPicker(false);
     };
 
-    const [isSuccess, setIsSuccess] = useState(false);
-
-
-
     const handleSubmit = async () => {
         if (mode === 'create' && !termsAccepted) return;
 
-        // Check if event is closed
         if (isEventClosed(event)) {
             alert(`Sorry, this guestlist closed at ${event.closeTime}. No further entries or edits are allowed.`);
             return;
@@ -247,13 +226,11 @@ export default function Rsvp() {
                     updatedAt: serverTimestamp()
                 });
 
-                // Create notification for edit
                 await notifyRSVPEdit(user.uid, id, event.eventName || event.name);
 
                 alert("RSVP Updated!");
                 navigate(`/event/${id}`);
             } else {
-                // Use centralized RSVP helper
                 await createRSVP({
                     eventId: id,
                     userId: user.uid,
@@ -268,18 +245,15 @@ export default function Rsvp() {
                     addedBy: 'self'
                 });
 
-                // --- NON-BLOCKING BACKGROUND TASKS ---
                 const hostId = event.createdBy;
                 const backgroundTasks = [];
 
-                // Notify host if different from user
                 if (hostId && hostId !== user.uid) {
                     backgroundTasks.push(
                         notifyHostNewGuest(hostId, id, event.eventName || event.name, user.displayName || 'Someone')
                     );
                 }
 
-                // Update event count (exclude host from capacity)
                 const isHost = user.uid === event.createdBy;
                 const countToIncrement = isHost ? cleanGuests.length - 1 : cleanGuests.length;
 
@@ -289,7 +263,6 @@ export default function Rsvp() {
                     }));
                 }
 
-                // AUTO-SAVE TO FRIENDS (exclude self)
                 cleanGuests.forEach(guest => {
                     const friendId = guest.email || guest.phone;
                     if (friendId) {
@@ -313,7 +286,6 @@ export default function Rsvp() {
                     localStorage.setItem('userRsvps', JSON.stringify(userRsvps));
                 }
 
-                // Fire background tasks (don't wait)
                 Promise.all(backgroundTasks).catch(e => console.warn("Background tasks failed", e));
 
                 setIsSuccess(true);
@@ -325,18 +297,13 @@ export default function Rsvp() {
         setSubmitting(false);
     };
 
-    if (loading) return <div className="screen center-msg">Loading...</div>;
+    if (loading) return <LoadingSpinner fullScreen={true} message="Loading RSVP form..." />;
     if (!event) return <div className="screen center-msg">Event not found</div>;
 
-    // Show a dedicated closed screen for non-viewing modes
     if (isEventClosed(event) && mode !== 'view') {
         return (
             <section className="screen active">
-                <header className="home-header">
-                    <div className="header-left">
-                        <button className="icon-btn-plain" onClick={() => navigate(-1)}><i className="fas fa-arrow-left"></i></button>
-                    </div>
-                </header>
+                <Header showBack={true} />
                 <div className="screen-content padding-x center-msg" style={{ textAlign: 'center' }}>
                     <i className="fas fa-clock" style={{ fontSize: 48, color: 'var(--error)', marginBottom: 20, opacity: 0.5 }}></i>
                     <h2 style={{ fontSize: 22, fontWeight: 800, marginBottom: 12 }}>Guestlist Closed</h2>
@@ -376,17 +343,16 @@ export default function Rsvp() {
     const isReadOnly = mode === 'view';
     const headerTitle = mode === 'view' ? 'RSVP Details' : mode === 'edit' ? 'Edit RSVP' : 'Add to list';
 
+    const filteredFriends = friends.filter(f =>
+        !guests.some(g =>
+            (g.email && g.email.toLowerCase() === f.email?.toLowerCase()) ||
+            (g.phone && g.phone.replace(/[^0-9]/g, '') === f.phone?.replace(/[^0-9]/g, ''))
+        )
+    );
+
     return (
         <section className="screen active">
-            <header className="home-header sticky-header">
-                <div className="header-left">
-                    <button className="icon-btn-plain" onClick={() => navigate(-1)}><i className="fas fa-arrow-left"></i></button>
-                </div>
-                <div className="header-center">
-                    <span className="logo-text-medium">{headerTitle}</span>
-                </div>
-                <div className="header-right"></div>
-            </header>
+            <Header showBack={true} title={headerTitle} />
 
             <div className="screen-content padding-x scrollable-form" style={{ paddingTop: 20 }}>
                 {mode === 'view' && (
@@ -506,40 +472,15 @@ export default function Rsvp() {
                 )}
             </div>
 
-            {showFriendsPicker && (
-                <>
-                    <div className="action-sheet-overlay" onClick={() => setShowFriendsPicker(false)}></div>
-                    <div className="action-sheet">
-                        <div className="action-sheet-handle"></div>
-                        <div className="action-sheet-content">
-                            <h3 style={{ marginBottom: 16, fontSize: 18, fontWeight: 700 }}>Select Friends</h3>
-                            <div style={{ maxHeight: 300, overflowY: 'auto', marginBottom: 16 }}>
-                                {friends.filter(f => !guests.some(g => (g.email && g.email === f.email) || (g.phone && g.phone.replace(/[^0-9]/g, '') === f.phone?.replace(/[^0-9]/g, '')))).map(friend => (
-                                    <label key={friend.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 12, border: '1px solid var(--border)', borderRadius: 8, marginBottom: 8, cursor: 'pointer', background: selectedFriends.includes(friend.id) ? 'rgba(52, 35, 166, 0.05)' : 'transparent' }}>
-                                        <input
-                                            type="checkbox"
-                                            checked={selectedFriends.includes(friend.id)}
-                                            onChange={() => handleFriendSelect(friend.id)}
-                                        />
-                                        <div style={{ flex: 1 }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                                <span style={{ fontWeight: 600, fontSize: 15 }}>{friend.name}</span>
-                                                {friend.linkedUid && (
-                                                    <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--success)', background: 'rgba(52, 199, 89, 0.1)', padding: '2px 4px', borderRadius: 3 }}>✓</span>
-                                                )}
-                                            </div>
-                                            <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>{friend.email || friend.phone} • {friend.gender}</div>
-                                        </div>
-                                    </label>
-                                ))}
-                            </div>
-                            <button onClick={handleConfirmFriends} className="primary-btn" disabled={selectedFriends.length === 0}>
-                                Add {selectedFriends.length} Friend{selectedFriends.length !== 1 ? 's' : ''}
-                            </button>
-                        </div>
-                    </div>
-                </>
-            )}
+            <FriendsPicker
+                show={showFriendsPicker}
+                onClose={() => setShowFriendsPicker(false)}
+                friends={filteredFriends}
+                selectedFriends={selectedFriends}
+                onSelect={handleFriendSelect}
+                onConfirm={handleConfirmFriends}
+                isSaving={false}
+            />
         </section>
     );
 }
